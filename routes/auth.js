@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken';
 import pool from '../db.js';
 const router = express.Router();
 
-// Inscription
 router.post('/register', async (req, res) => {
   const { nom, email, telephone, mot_de_passe, role } = req.body;
   try {
@@ -19,7 +18,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Connexion
 router.post('/login', async (req, res) => {
   const { email, mot_de_passe } = req.body;
   try {

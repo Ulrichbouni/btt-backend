@@ -10,12 +10,12 @@ export const verifyToken = async (req, res, next) => {
     if (result.rows.length === 0) return res.status(401).json({ error: 'Utilisateur introuvable' });
     req.user = result.rows[0];
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Token invalide' });
   }
 };
 
 export const isAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Accès administrateur requis' });
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin requis' });
   next();
 };

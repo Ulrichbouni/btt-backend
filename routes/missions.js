@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db.js';
 import { verifyToken, isAdmin } from '../middleware/auth.js';
+import { validate, missionSchema, mesuresSchema } from '../middleware/validation.js';
 const router = express.Router();
 
 // --- TECHNICIEN : Voir ses missions ---
@@ -42,7 +43,7 @@ router.get('/:mission_id', verifyToken, async (req, res) => {
 });
 
 // --- TECHNICIEN : Soumettre les mesures ---
-router.post('/:mission_id/mesures', verifyToken, async (req, res) => {
+router.post('/:mission_id/mesures', verifyToken, validate(mesuresSchema), async (req, res) => {
   const { mission_id } = req.params;
   const { longueur_murs, hauteur_sous_plafond, surface_ouverte, perimetre, photo_urls, croquis_url } = req.body;
   
@@ -87,7 +88,7 @@ router.put('/:mission_id/valider', verifyToken, isAdmin, async (req, res) => {
 });
 
 // --- ADMIN : Créer une mission ---
-router.post('/', verifyToken, isAdmin, async (req, res) => {
+router.post('/', verifyToken, isAdmin, validate(missionSchema), async (req, res) => {
   const { devis_id, technicien_id, date_visite } = req.body;
   const result = await pool.query(
     `INSERT INTO missions_technicien (devis_id, technicien_id, date_visite) VALUES ($1,$2,$3) RETURNING *`,

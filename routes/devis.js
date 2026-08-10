@@ -1,10 +1,11 @@
 import express from 'express';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
+import { validate, devisSchema } from '../middleware/validation.js';
 const router = express.Router();
 
 // Créer une demande de devis
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyToken, validate(devisSchema), async (req, res) => {
   const { surface, ville, adresse, date_souhaitee, photos, plans } = req.body;
   const result = await pool.query(
     `INSERT INTO devis (utilisateur_id, surface, ville, adresse, date_souhaitee, statut) 

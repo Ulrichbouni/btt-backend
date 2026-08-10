@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
+import { validate, produitSchema } from '../middleware/validation.js';
 const router = express.Router();
 
 // Liste des produits (avec filtres)
@@ -32,7 +33,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 });
 
 // Admin : Créer un produit
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyToken, validate(produitSchema), async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin requis' });
   const { nom, nom_en, epaisseur, categorie, application, application_en, prix_ttc, poids_unite, qte_conteneur, statut_stock } = req.body;
   const result = await pool.query(

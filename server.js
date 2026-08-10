@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 // Import des routes
 import authRoutes from './routes/auth.js';
@@ -14,14 +16,45 @@ import devisRoutes from './routes/devis.js';
 import chantiersRoutes from './routes/chantiers.js';
 import paiementsRoutes from './routes/paiements.js';
 import assistantRoutes from './routes/assistant.js';
+import notificationsRoutes from './routes/notifications.js';
 
 dotenv.config();
 
 const app = express();
 
-// --- Middleware CORS (à restreindre en production) ---
-// En production, remplacez '*' par l'URL de votre frontend Vercel
-app.use(cors({ origin: '*' }));
+// --- Security Headers ---
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+// --- Rate Limiting ---
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/', limiter);
+
+// Rate limiting plus strict pour l'authentification
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true,
+  message: { error: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.' }
+});
+
+// --- Middleware CORS sécurisé ---
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.FRONTEND_URL || 'https://votre-domaine.com'
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 
 // --- Middleware pour parser le JSON ---
 app.use(express.json());
@@ -31,8 +64,8 @@ app.get('/', (req, res) => {
   res.send('🚀 BTT API fonctionne');
 });
 
-// --- Routes d'authentification ---
-app.use('/api/auth', authRoutes);
+// --- Routes d'authentification (avec rate limiting strict) ---
+app.use('/api/auth', authLimiter, authRoutes);
 
 // --- Routes Admin (gestion des devis, missions, etc.) ---
 app.use('/api/admin', adminRoutes);
@@ -63,6 +96,9 @@ app.use('/api/paiements', paiementsRoutes);
 
 // --- Routes Assistant IA (OpenRouter) ---
 app.use('/api/assistant', assistantRoutes);
+
+// --- Routes Notifications ---
+app.use('/api/notifications', notificationsRoutes);
 
 // --- Gestion des erreurs 404 ---
 app.use((req, res) => {

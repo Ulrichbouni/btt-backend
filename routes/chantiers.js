@@ -19,17 +19,22 @@ router.get('/mes-chantiers', verifyToken, async (req, res) => {
 // Détail d'un chantier
 router.get('/:id', verifyToken, async (req, res) => {
   const result = await pool.query(
-    `SELECT c.*, d.ville, d.adresse, d.surface, d.utilisateur_id 
+    `SELECT c.*, d.ville, d.adresse, d.surface, d.utilisateur_id, m.technicien_id 
      FROM chantiers c 
      JOIN devis d ON c.devis_id = d.id 
+     LEFT JOIN missions_technicien m ON m.devis_id = d.id
      WHERE c.id = $1`,
     [req.params.id]
   );
   if (!result.rows.length) return res.status(404).json({ error: 'Chantier non trouvé' });
-  if (result.rows[0].utilisateur_id !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'technicien') {
+  const row = result.rows[0];
+  const isOwner = row.utilisateur_id === req.user.id;
+  const isAdmin = req.user.role === 'admin';
+  const isAssignedTech = req.user.role === 'technicien' && row.technicien_id === req.user.id;
+  if (!isOwner && !isAdmin && !isAssignedTech) {
     return res.status(403).json({ error: 'Accès refusé' });
   }
-  res.json(result.rows[0]);
+  res.json(row);
 });
 
 // Avancer l'étape (admin ou technicien)

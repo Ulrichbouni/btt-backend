@@ -1,10 +1,11 @@
 import express from 'express';
 import pool from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
+import { validate, calculateurSchema } from '../middleware/validation.js';
 const router = express.Router();
 
 // Calcul des besoins (précision métier)
-router.post('/estimer', verifyToken, async (req, res) => {
+router.post('/estimer', verifyToken, validate(calculateurSchema), async (req, res) => {
   const { longueur, largeur, type_batiment, etage, epaisseur, produit_id } = req.body;
   
   // 1. Récupérer le produit

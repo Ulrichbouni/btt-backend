@@ -1,170 +1,184 @@
--- Schéma complet de la base de données BTT-LUX
--- Ce fichier ne contient que le DDL (structure + index).
--- Les données de démonstration (admin, produits) sont injectées via scripts/seed.js
+-- Schema BTT-LUX
+-- ALIGNE SUR LA BASE DE PRODUCTION REELLE (genere via scripts/dumpRealSchema.js)
+-- + tables paiements / professionnels / notifications ajoutees en 2026.
+-- Idempotent : CREATE TABLE IF NOT EXISTS.
+-- Genere depuis la base REELLE (node scripts/dumpRealSchema.js)
+-- Source de verite : structure de production.
 
--- Utilisateurs
-CREATE TABLE IF NOT EXISTS utilisateurs (
-    id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    telephone VARCHAR(20),
-    mot_de_passe_hash VARCHAR(255) NOT NULL,
-    telephone_verified BOOLEAN DEFAULT FALSE,
-    role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'technicien', 'admin')),
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS accessoires (
+    id INTEGER NOT NULL,
+    nom VARCHAR(255) NOT NULL,
+    nom_en VARCHAR(255),
+    prix_ttc DOUBLE PRECISION NOT NULL,
+    statut_stock VARCHAR(50) DEFAULT 'En stock'::character varying,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT accessoires_pkey PRIMARY KEY (id)
 );
 
--- Secrets OTP pour 2FA
-CREATE TABLE IF NOT EXISTS otp_secrets (
-    id SERIAL PRIMARY KEY,
-    utilisateur_id INTEGER REFERENCES utilisateurs(id) ON DELETE CASCADE,
-    secret VARCHAR(255) NOT NULL,
-    enabled BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(utilisateur_id)
+CREATE TABLE IF NOT EXISTS calculs_historique (
+    id INTEGER NOT NULL,
+    utilisateur_id UUID,
+    surface DOUBLE PRECISION,
+    type_batiment VARCHAR(50),
+    etage INTEGER,
+    epaisseur_panneau VARCHAR(50),
+    nb_panneaux INTEGER,
+    cout_total DOUBLE PRECISION,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT calculs_historique_pkey PRIMARY KEY (id),
+    CONSTRAINT calculs_historique_utilisateur_id_fkey FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
 );
 
--- Catalogue produits
-CREATE TABLE IF NOT EXISTS produits (
-    id SERIAL PRIMARY KEY,
-    nom VARCHAR(200) NOT NULL,
-    nom_en VARCHAR(200),
-    epaisseur VARCHAR(20) NOT NULL,
-    categorie VARCHAR(100) NOT NULL,
-    application TEXT,
-    application_en TEXT,
-    prix_ttc DECIMAL(10,2) NOT NULL,
-    poids_unite DECIMAL(6,2) NOT NULL,
-    qte_conteneur INTEGER NOT NULL,
-    statut_stock VARCHAR(50) DEFAULT 'disponible',
-    image_url TEXT,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Devis
-CREATE TABLE IF NOT EXISTS devis (
-    id SERIAL PRIMARY KEY,
-    utilisateur_id INTEGER REFERENCES utilisateurs(id),
-    surface DECIMAL(8,2),
-    ville VARCHAR(100) NOT NULL,
-    adresse TEXT NOT NULL,
-    date_souhaitee DATE,
-    statut VARCHAR(50) DEFAULT 'envoye' CHECK (statut IN ('envoye', 'en_cours', 'accepte', 'refuse', 'paye')),
-    cout_estime_brut DECIMAL(12,2),
-    remise_pourcentage DECIMAL(5,2) DEFAULT 0,
-    frais_transport DECIMAL(10,2) DEFAULT 0,
-    frais_divers DECIMAL(10,2) DEFAULT 0,
-    total_final DECIMAL(12,2),
-    photos TEXT[],
-    plans TEXT[],
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Missions technicien
-CREATE TABLE IF NOT EXISTS missions_technicien (
-    id SERIAL PRIMARY KEY,
-    devis_id INTEGER REFERENCES devis(id),
-    technicien_id INTEGER REFERENCES utilisateurs(id),
-    date_visite TIMESTAMP NOT NULL,
-    statut VARCHAR(50) DEFAULT 'planifiee' CHECK (statut IN ('planifiee', 'en_cours', 'terminee', 'annulee')),
-    rapport_visite TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Chantiers
 CREATE TABLE IF NOT EXISTS chantiers (
-    id SERIAL PRIMARY KEY,
-    devis_id INTEGER REFERENCES devis(id) UNIQUE,
-    mission_id INTEGER REFERENCES missions_technicien(id),
-    etape_actuelle VARCHAR(100) DEFAULT 'demarrage',
+    id INTEGER NOT NULL,
+    devis_id INTEGER,
+    etape VARCHAR(50) DEFAULT 'Devis re├ºu'::character varying,
+    technicien_assigne VARCHAR(255),
     historique JSONB DEFAULT '[]'::jsonb,
-    adresse TEXT NOT NULL,
-    ville VARCHAR(100) NOT NULL,
-    date_debut DATE,
-    date_fin_prevue DATE,
-    date_fin_reelle DATE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT now(),
+    mission_id INTEGER,
+    CONSTRAINT chantiers_devis_id_fkey FOREIGN KEY (devis_id) REFERENCES devis(id),
+    CONSTRAINT chantiers_devis_id_key UNIQUE (devis_id),
+    CONSTRAINT chantiers_pkey PRIMARY KEY (id)
 );
 
--- Mesures terrain
+CREATE TABLE IF NOT EXISTS devis (
+    id INTEGER NOT NULL,
+    utilisateur_id UUID,
+    ville VARCHAR(100),
+    adresse TEXT,
+    etage INTEGER,
+    surface DOUBLE PRECISION,
+    nb_panneaux INTEGER,
+    prix_unitaire DOUBLE PRECISION,
+    cout_estime_brut DOUBLE PRECISION,
+    remise_pourcentage DOUBLE PRECISION DEFAULT 0,
+    frais_transport DOUBLE PRECISION DEFAULT 0,
+    frais_divers DOUBLE PRECISION DEFAULT 0,
+    total_final DOUBLE PRECISION,
+    statut VARCHAR(20) DEFAULT 'envoye'::character varying,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT devis_pkey PRIMARY KEY (id),
+    CONSTRAINT devis_utilisateur_id_fkey FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+);
+
 CREATE TABLE IF NOT EXISTS mesures_terrain (
-    id SERIAL PRIMARY KEY,
-    mission_id INTEGER REFERENCES missions_technicien(id),
-    longueur_murs DECIMAL(6,2) NOT NULL,
-    hauteur_sous_plafond DECIMAL(6,2) NOT NULL,
-    surface_ouverte DECIMAL(6,2) DEFAULT 0,
-    perimetre DECIMAL(6,2),
-    surface_reelle DECIMAL(8,2),
+    id INTEGER NOT NULL,
+    mission_id INTEGER,
+    longueur_murs DOUBLE PRECISION,
+    hauteur_sous_plafond DOUBLE PRECISION,
+    surface_ouverte DOUBLE PRECISION,
+    perimetre DOUBLE PRECISION,
+    surface_reelle DOUBLE PRECISION,
     nb_panneaux_reel INTEGER,
-    photo_urls TEXT[] DEFAULT '{}',
+    photo_urls TEXT[],
     croquis_url TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    valide_par_admin BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT mesures_terrain_mission_id_fkey FOREIGN KEY (mission_id) REFERENCES missions_technicien(id),
+    CONSTRAINT mesures_terrain_pkey PRIMARY KEY (id)
 );
 
--- Paiements
+CREATE TABLE IF NOT EXISTS missions_technicien (
+    id INTEGER NOT NULL,
+    devis_id INTEGER,
+    technicien_id UUID,
+    statut VARCHAR(20) DEFAULT 'assignee'::character varying,
+    date_visite DATE,
+    notes_technicien TEXT,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT missions_technicien_devis_id_fkey FOREIGN KEY (devis_id) REFERENCES devis(id),
+    CONSTRAINT missions_technicien_devis_id_key UNIQUE (devis_id),
+    CONSTRAINT missions_technicien_pkey PRIMARY KEY (id),
+    CONSTRAINT missions_technicien_technicien_id_fkey FOREIGN KEY (technicien_id) REFERENCES utilisateurs(id)
+);
+
+CREATE TABLE IF NOT EXISTS otp_secrets (
+    utilisateur_id UUID NOT NULL,
+    secret TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT otp_secrets_pkey PRIMARY KEY (utilisateur_id),
+    CONSTRAINT otp_secrets_utilisateur_id_fkey FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id)
+);
+
+CREATE TABLE IF NOT EXISTS produits (
+    id INTEGER NOT NULL,
+    nom VARCHAR(255) NOT NULL,
+    epaisseur VARCHAR(50),
+    categorie VARCHAR(100),
+    prix_ttc DOUBLE PRECISION NOT NULL,
+    poids_unite DOUBLE PRECISION,
+    qte_conteneur INTEGER,
+    statut_stock VARCHAR(50),
+    application TEXT,
+    CONSTRAINT produits_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS utilisateurs (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    nom VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    telephone VARCHAR(20),
+    role VARCHAR(20) DEFAULT 'client'::character varying,
+    ville VARCHAR(100),
+    mot_de_passe_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT utilisateurs_email_key UNIQUE (email),
+    CONSTRAINT utilisateurs_pkey PRIMARY KEY (id),
+    CONSTRAINT utilisateurs_telephone_key UNIQUE (telephone)
+);
+
+-- Index
+
+
+-- ============================================================
+-- Tables manquantes en production (ajout 2026)
+-- Style aligne sur la base reelle : ids entiers + FK utilisateurs en UUID
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS paiements (
     id SERIAL PRIMARY KEY,
-    utilisateur_id INTEGER REFERENCES utilisateurs(id),
+    utilisateur_id UUID REFERENCES utilisateurs(id),
     devis_id INTEGER REFERENCES devis(id),
-    methode VARCHAR(50) NOT NULL CHECK (methode IN ('orange_money', 'mtn', 'stripe', 'carte', 'virement')),
-    montant DECIMAL(12,2) NOT NULL,
+    methode VARCHAR(50),
+    montant DOUBLE PRECISION NOT NULL,
     reference VARCHAR(100) UNIQUE NOT NULL,
     transaction_id VARCHAR(100),
-    statut VARCHAR(50) DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'reussi', 'echoue', 'rembourse')),
+    statut VARCHAR(50) DEFAULT 'en_attente',
     payment_data JSONB,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
--- Historique calculs
-CREATE TABLE IF NOT EXISTS calculs_historique (
-    id SERIAL PRIMARY KEY,
-    utilisateur_id INTEGER REFERENCES utilisateurs(id),
-    surface DECIMAL(8,2) NOT NULL,
-    type_batiment VARCHAR(50) NOT NULL,
-    etage INTEGER DEFAULT 0,
-    epaisseur_panneau VARCHAR(20),
-    nb_panneaux INTEGER NOT NULL,
-    cout_total DECIMAL(12,2),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Professionnels BTP
 CREATE TABLE IF NOT EXISTS professionnels (
     id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
+    nom VARCHAR(255) NOT NULL,
     role VARCHAR(100) NOT NULL,
     ville VARCHAR(100) NOT NULL,
     telephone VARCHAR(20) NOT NULL,
     email VARCHAR(255),
     niveau_certification VARCHAR(100),
-    note DECIMAL(2,1) CHECK (note >= 0 AND note <= 5),
+    note DOUBLE PRECISION DEFAULT 0,
     nb_chantiers INTEGER DEFAULT 0,
     disponible BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT now(),
+    CONSTRAINT professionnels_identite_key UNIQUE (nom, ville, telephone, role)
 );
 
--- Notifications
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
-    utilisateur_id INTEGER REFERENCES utilisateurs(id),
+    utilisateur_id UUID REFERENCES utilisateurs(id) ON DELETE CASCADE,
     titre VARCHAR(255) NOT NULL,
     corps TEXT NOT NULL,
     lu BOOLEAN DEFAULT FALSE,
     type VARCHAR(50) DEFAULT 'info',
-    date_envoi TIMESTAMP DEFAULT NOW()
+    date_envoi TIMESTAMP DEFAULT now()
 );
 
--- Index pour améliorer les performances
-CREATE INDEX IF NOT EXISTS idx_utilisateurs_email ON utilisateurs(email);
-CREATE INDEX IF NOT EXISTS idx_devis_utilisateur ON devis(utilisateur_id);
-CREATE INDEX IF NOT EXISTS idx_missions_technicien ON missions_technicien(technicien_id);
-CREATE INDEX IF NOT EXISTS idx_paiements_reference ON paiements(reference);
+-- Index applicatifs
+CREATE INDEX IF NOT EXISTS idx_paiements_utilisateur ON paiements(utilisateur_id);
+CREATE INDEX IF NOT EXISTS idx_paiements_devis ON paiements(devis_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_utilisateur ON notifications(utilisateur_id);
+CREATE INDEX IF NOT EXISTS idx_professionnels_role ON professionnels(role);
+CREATE INDEX IF NOT EXISTS idx_professionnels_ville ON professionnels(ville);

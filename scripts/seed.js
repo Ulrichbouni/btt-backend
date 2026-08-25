@@ -29,17 +29,23 @@ async function seed() {
   );
   console.log(`✅ Admin prêt (${adminEmail})`);
 
-  // 2) Seed produits de démonstration
-  await pool.query(
-    `INSERT INTO produits (nom, nom_en, epaisseur, categorie, application, prix_ttc, poids_unite, qte_conteneur, statut_stock) VALUES
-       ('Luxerboard Standard', 'Luxerboard Standard', '10mm', 'Plafonds', 'Plafonds résidentiels et commerciaux', 8500, 8.5, 200, 'En stock'),
-       ('Luxerboard Premium', 'Luxerboard Premium', '12mm', 'Façades', 'Façades et bardages', 12500, 10.2, 150, 'En stock'),
-       ('Luxerboard Industriel', 'Luxerboard Industriel', '14mm', 'Industriel', 'Isolation industrielle', 15800, 12.0, 120, 'En stock'),
-       ('Luxerboard Acoustique', 'Luxerboard Acoustique', '10mm', 'Cloisons', 'Cloisons phoniques', 9800, 9.0, 180, 'En stock'),
-       ('Accessoires de fixation', 'Fixation Accessories', '-', 'Accessoires', 'Vis, rondelles, supports', 500, 0.1, 1000, 'En stock')
-     ON CONFLICT DO NOTHING`
-  );
-  console.log('✅ Produits de démonstration insérés');
+  // 2) Seed produits de demonstration
+  // Garde anti-doublons : si le catalogue est deja peuple, on n'insere rien.
+  const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS n FROM produits');
+  const existing = countRows[0]?.n ?? 0;
+  if (existing > 0) {
+    console.log(`Catalogue produits deja peuple (${existing} lignes) — insertion ignoree`);
+  } else {
+    await pool.query(
+      `INSERT INTO produits (nom, nom_en, epaisseur, categorie, application, prix_ttc, poids_unite, qte_conteneur, statut_stock) VALUES
+         ('Luxerboard Standard', 'Luxerboard Standard', '10mm', 'Plafonds', 'Plafonds residentiels et commerciaux', 8500, 8.5, 200, 'En stock'),
+         ('Luxerboard Premium', 'Luxerboard Premium', '12mm', 'Facades', 'Facades et bardages', 12500, 10.2, 150, 'En stock'),
+         ('Luxerboard Industriel', 'Luxerboard Industriel', '14mm', 'Industriel', 'Isolation industrielle', 15800, 12.0, 120, 'En stock'),
+         ('Luxerboard Acoustique', 'Luxerboard Acoustique', '10mm', 'Cloisons', 'Cloisons phoniques', 9800, 9.0, 180, 'En stock'),
+         ('Accessoires de fixation', 'Fixation Accessories', '-', 'Accessoires', 'Vis, rondelles, supports', 500, 0.1, 1000, 'En stock')`
+    );
+    console.log('Produits de demonstration inseres');
+  }
 
   await pool.end();
   process.exit(0);

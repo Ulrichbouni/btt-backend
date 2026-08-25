@@ -4,6 +4,7 @@
     "scripts": {
         "db:init": "node scripts/initDb.js",
         "db:seed": "node scripts/seed.js",
+        "db:check": "node scripts/checkDb.js",
         "test:unit": "jest --testPathPatterns=unit",
         "test:integration": "jest --testPathPatterns=integration",
         "start": "node server.js",

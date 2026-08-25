@@ -1,0 +1,46 @@
+name: CI Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # 1) Scan de secrets — bloque si un vrai secret est commité
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 2) Lint & tests unitaires (ne requièrent pas de base de données)
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Tests unitaires
+        run: npm run test:unit
+        env:
+          JWT_SECRET: ci-only-secret-not-for-prod
+      - name: Vérif syntaxe serveur & scripts
+        run: |
+          node --check server.js
+          node --check scripts/initDb.js
+          node --check scripts/seed.js
+
+      # Tests d'intégration : nécessitent une vraie PostgreSQL.
+      # Exécutés manuellement ou en local via :
+      #   npm run db:init && $env:ADMIN_PASSWORD='...' && npm run db:seed
+      # puis : npm run test:integration

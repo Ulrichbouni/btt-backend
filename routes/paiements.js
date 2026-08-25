@@ -24,7 +24,7 @@ router.post("/initier", verifyToken, validate(paiementSchema), async (req, res) 
     });
 
     await pool.query(
-      `INSERT INTO paiements (utilisateur_id, devis_id, methode, montant, reference, statut, notchpay_data) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      `INSERT INTO paiements (utilisateur_id, devis_id, methode, montant, reference, statut, payment_data) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [req.user.id, devis_id || null, methode || "mobile_money", montant, reference, "en_attente", JSON.stringify(result)]
     );
 

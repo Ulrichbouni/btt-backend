@@ -1,0 +1,44 @@
+# render.yaml — pour un dépôt GIT DÉDIÉ au backend (racine = btt-backend)
+# Si vous utilisez un monorepo à la racine -> voir render.yaml (racine du projet)
+services:
+  - type: web
+    name: btt-backend
+    env: node
+    plan: starter
+    buildCommand: npm ci --only=production
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: btt-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+  - type: pserv
+    name: btt-db
+    env: postgresql
+    plan: starter
+    databaseName: btt_lux
+    user: btt_user

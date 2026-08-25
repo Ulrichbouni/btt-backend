@@ -17,8 +17,13 @@ import chantiersRoutes from './routes/chantiers.js';
 import paiementsRoutes from './routes/paiements.js';
 import assistantRoutes from './routes/assistant.js';
 import notificationsRoutes from './routes/notifications.js';
+import pool from './db.js';
 
 dotenv.config();
+
+// Derrière Render/Vercel/reverse-proxy : faire confiance au 1er proxy
+// pour que req.ip, les rate-limiters et les cookies Secure soient exacts.
+app.set('trust proxy', 1);
 
 const app = express();
 
@@ -62,6 +67,17 @@ app.use(express.json());
 // --- Routes publiques ---
 app.get('/', (req, res) => {
   res.send('🚀 BTT API fonctionne');
+});
+
+// --- Healthcheck (utilisé par Render, Docker et les uptime checks) ---
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'up', timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('Healthcheck DB KO:', err.message);
+    res.status(503).json({ status: 'degraded', db: 'down', timestamp: new Date().toISOString() });
+  }
 });
 
 // --- Routes d'authentification (avec rate limiting strict) ---

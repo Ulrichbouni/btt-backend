@@ -180,7 +180,7 @@ describe('Validation Schemas', () => {
 
   describe('validate middleware', () => {
     it('should call next() for valid data', () => {
-      const req = { body: { email: 'test@example.com' } };
+      const req = { body: { email: 'test@example.com', mot_de_passe: 'motdepasse' } };
       const res = {};
       const next = jest.fn();
       

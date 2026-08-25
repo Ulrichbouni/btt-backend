@@ -92,8 +92,8 @@ export const validate = (schema) => {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: 'Données invalides',
-          details: error.errors.map(e => ({
-            champ: e.path.join('.'),
+          details: error.issues.map(e => ({
+            champ: Array.isArray(e.path) ? e.path.join('.') : String(e.path),
             message: e.message
           }))
         });
@@ -113,8 +113,8 @@ export const validateParams = (schema) => {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: 'Paramètres invalides',
-          details: error.errors.map(e => ({
-            champ: e.path.join('.'),
+          details: error.issues.map(e => ({
+            champ: Array.isArray(e.path) ? e.path.join('.') : String(e.path),
             message: e.message
           }))
         });

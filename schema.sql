@@ -1,4 +1,6 @@
--- Schéma complet de la base de données BTT-LUX
+-- SchÃ©ma complet de la base de donnÃ©es BTT-LUX
+-- Ce fichier ne contient que le DDL (structure + index).
+-- Les donnÃ©es de dÃ©monstration (admin, produits) sont injectÃ©es via scripts/seed.js
 
 -- Utilisateurs
 CREATE TABLE IF NOT EXISTS utilisateurs (
@@ -7,6 +9,7 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
     email VARCHAR(255) UNIQUE NOT NULL,
     telephone VARCHAR(20),
     mot_de_passe_hash VARCHAR(255) NOT NULL,
+    telephone_verified BOOLEAN DEFAULT FALSE,
     role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'technicien', 'admin')),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -61,6 +64,18 @@ CREATE TABLE IF NOT EXISTS devis (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Missions technicien
+CREATE TABLE IF NOT EXISTS missions_technicien (
+    id SERIAL PRIMARY KEY,
+    devis_id INTEGER REFERENCES devis(id),
+    technicien_id INTEGER REFERENCES utilisateurs(id),
+    date_visite TIMESTAMP NOT NULL,
+    statut VARCHAR(50) DEFAULT 'planifiee' CHECK (statut IN ('planifiee', 'en_cours', 'terminee', 'annulee')),
+    rapport_visite TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Chantiers
 CREATE TABLE IF NOT EXISTS chantiers (
     id SERIAL PRIMARY KEY,
@@ -77,18 +92,6 @@ CREATE TABLE IF NOT EXISTS chantiers (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Missions technicien
-CREATE TABLE IF NOT EXISTS missions_technicien (
-    id SERIAL PRIMARY KEY,
-    devis_id INTEGER REFERENCES devis(id),
-    technicien_id INTEGER REFERENCES utilisateurs(id),
-    date_visite TIMESTAMP NOT NULL,
-    statut VARCHAR(50) DEFAULT 'planifiee' CHECK (statut IN ('planifiee', 'en_cours', 'terminee', 'annulee')),
-    rapport_visite TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
 -- Mesures terrain
 CREATE TABLE IF NOT EXISTS mesures_terrain (
     id SERIAL PRIMARY KEY,
@@ -101,7 +104,6 @@ CREATE TABLE IF NOT EXISTS mesures_terrain (
     nb_panneaux_reel INTEGER,
     photo_urls TEXT[] DEFAULT '{}',
     croquis_url TEXT,
-    valide_par_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -116,7 +118,7 @@ CREATE TABLE IF NOT EXISTS paiements (
     reference VARCHAR(100) UNIQUE NOT NULL,
     transaction_id VARCHAR(100),
     statut VARCHAR(50) DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'reussi', 'echoue', 'rembourse')),
-    notchpay_data JSONB,
+    payment_data JSONB,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -160,25 +162,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     date_envoi TIMESTAMP DEFAULT NOW()
 );
 
--- Index pour améliorer les performances
+-- Index pour amÃ©liorer les performances
 CREATE INDEX IF NOT EXISTS idx_utilisateurs_email ON utilisateurs(email);
 CREATE INDEX IF NOT EXISTS idx_devis_utilisateur ON devis(utilisateur_id);
 CREATE INDEX IF NOT EXISTS idx_missions_technicien ON missions_technicien(technicien_id);
 CREATE INDEX IF NOT EXISTS idx_paiements_reference ON paiements(reference);
 CREATE INDEX IF NOT EXISTS idx_notifications_utilisateur ON notifications(utilisateur_id);
-
--- Insertion d'un admin par défaut (mot de passe: admin123)
-INSERT INTO utilisateurs (nom, email, telephone, mot_de_passe_hash, role)
-SELECT 'Admin BTT-LUX', 'admin@btt-lux.com', '+237670000000', 
-    '$2b$10$rOjXgKkqZ8Y5xH7vN9pQOe1aBcDfGhIjKlMnOpQrStUvWxYz123456789', 
-    'admin'
-WHERE NOT EXISTS (SELECT 1 FROM utilisateurs WHERE email = 'admin@btt-lux.com');
-
--- Insertion de produits exemple
-INSERT INTO produits (nom, nom_en, epaisseur, categorie, application, prix_ttc, poids_unite, qte_conteneur, statut_stock) VALUES
-('Luxerboard Standard', 'Luxerboard Standard', '10mm', 'Plafonds', 'Plafonds résidentiels et commerciaux', 8500, 8.5, 200, 'En stock'),
-('Luxerboard Premium', 'Luxerboard Premium', '12mm', 'Façades', 'Façades et bardages', 12500, 10.2, 150, 'En stock'),
-('Luxerboard Industriel', 'Luxerboard Industriel', '14mm', 'Industriel', 'Isolation industrielle', 15800, 12.0, 120, 'En stock'),
-('Luxerboard Acoustique', 'Luxerboard Acoustique', '10mm', 'Cloisons', 'Cloisons phoniques', 9800, 9.0, 180, 'En stock'),
-('Accessoires de fixation', 'Fixation Accessories', '-', 'Accessoires', 'Vis, rondelles, supports', 500, 0.1, 1000, 'En stock')
-ON CONFLICT DO NOTHING;

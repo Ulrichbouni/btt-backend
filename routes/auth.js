@@ -4,7 +4,9 @@ import jwt from "jsonwebtoken";
 import * as speakeasy from 'speakeasy';
 import pool from "../db.js";
 import { validate, registerSchema, loginSchema } from "../middleware/validation.js";
+import { verifyToken } from "../middleware/auth.js";
 import WhatsAppService from "../services/whatsapp.js";
+import EmailService from "../services/email.js";
 
 const router = express.Router();
 
@@ -34,6 +36,11 @@ router.post("/register", validate(registerSchema), async (req, res) => {
       "INSERT INTO utilisateurs (nom, email, telephone, mot_de_passe_hash, role, telephone_verified) VALUES ($1,$2,$3,$4,$5,true) RETURNING id, nom, email, role",
       [nom, email, telephone, hash, role || "client"]
     );
+// Notifications: email de bienvenue + WhatsApp
+    await EmailService.sendWelcome(result.rows[0].nom, email);
+    if (telephone) {
+      WhatsAppService.sendMessage(telephone, "Bienvenue sur BTT-LUX, " + result.rows[0].nom + " ! Votre compte est cree avec succes.");
+    }
     res.status(201).json({
       id: result.rows[0].id,
       nom: result.rows[0].nom,

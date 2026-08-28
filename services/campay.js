@@ -57,4 +57,4 @@ export class CampayService {
   }
 }
 
-export default new CampayService();
+export default CampayService;

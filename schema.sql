@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
     role VARCHAR(20) DEFAULT 'client'::character varying,
     ville VARCHAR(100),
     mot_de_passe_hash TEXT NOT NULL,
+    telephone_verified BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT now(),
     CONSTRAINT utilisateurs_email_key UNIQUE (email),
     CONSTRAINT utilisateurs_pkey PRIMARY KEY (id),

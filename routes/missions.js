@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db.js';
 import { verifyToken, isAdmin } from '../middleware/auth.js';
 import { validate, missionSchema, mesuresSchema } from '../middleware/validation.js';
+import WhatsAppService from '../services/whatsapp.js';
 const router = express.Router();
 
 // --- TECHNICIEN : Voir ses missions ---
@@ -94,6 +95,18 @@ router.post('/', verifyToken, isAdmin, validate(missionSchema), async (req, res)
     `INSERT INTO missions_technicien (devis_id, technicien_id, date_visite) VALUES ($1,$2,$3) RETURNING *`,
     [devis_id, technicien_id, date_visite]
   );
+
+  // Notification au technicien par WhatsApp
+  const tech = await pool.query('SELECT telephone, nom FROM utilisateurs WHERE id=$1', [technicien_id]);
+  if (tech.rows[0]?.telephone) {
+    WhatsAppService.sendMissionNotification(
+      tech.rows[0].telephone,
+      result.rows[0].id,
+      date_visite,
+      devis_id
+    );
+  }
+
   res.status(201).json(result.rows[0]);
 });
 

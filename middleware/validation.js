@@ -52,7 +52,7 @@ export const mesuresSchema = z.object({
 export const paiementSchema = z.object({
   devis_id: z.number().int().positive().optional(),
   montant: z.number().positive('Montant doit être positif'),
-  methode: z.enum(['orange_money', 'mtn', 'stripe', 'carte', 'virement']),
+  methode: z.enum(['orange_money', 'mtn', 'mobile_money', 'stripe', 'carte', 'virement']),
   telephone: z.string().optional(),
   num_carte: z.string().optional(),
   expiration: z.string().optional(),

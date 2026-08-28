@@ -17,15 +17,21 @@ import chantiersRoutes from './routes/chantiers.js';
 import paiementsRoutes from './routes/paiements.js';
 import assistantRoutes from './routes/assistant.js';
 import notificationsRoutes from './routes/notifications.js';
+import uploadsRoutes from './routes/uploads.js';
+import { getDevisPDF } from './services/pdf.js';
+import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 import pool from './db.js';
+import { verifyToken } from './middleware/auth.js';
 
 dotenv.config();
+
+const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Derrière Render/Vercel/reverse-proxy : faire confiance au 1er proxy
 // pour que req.ip, les rate-limiters et les cookies Secure soient exacts.
 app.set('trust proxy', 1);
-
-const app = express();
 
 // --- Security Headers ---
 app.use(helmet({
@@ -116,13 +122,49 @@ app.use('/api/assistant', assistantRoutes);
 // --- Routes Notifications ---
 app.use('/api/notifications', notificationsRoutes);
 
+// --- Routes Upload ---
+app.use('/api/uploads', uploadsRoutes);
+
+// --- Fichiers statiques uploads ---
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// --- Export PDF d'un devis (client/admin) ---
+app.get('/api/devis/:id/pdf', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const dev = await pool.query('SELECT * FROM devis WHERE id = $1', [id]);
+    if (!dev.rows.length) return res.status(404).json({ error: 'Devis introuvable' });
+    if (dev.rows[0].utilisateur_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Accès refusé' });
+    }
+    const buffer = await getDevisPDF(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="devis-${id}.pdf"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('PDF error:', err);
+    res.status(500).json({ error: 'Erreur génération PDF' });
+  }
+});
+
 // --- Gestion des erreurs 404 ---
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
 });
 
-// --- Démarrage du serveur ---
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`✅ Serveur BTT démarré sur le port ${PORT}`);
+// --- Middleware global des erreurs ---
+app.use((err, req, res, next) => {
+  console.error('Erreur serveur:', err);
+  res.status(500).json({ error: 'Erreur interne du serveur' });
 });
+
+// --- Démarrage du serveur (uniquement si lancé directement) ---
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`✅ Serveur BTT démarré sur le port ${PORT}`);
+  });
+}
+
+export default app;

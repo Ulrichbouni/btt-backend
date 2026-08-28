@@ -10,9 +10,13 @@ const router = express.Router();
 router.post('/', verifyToken, validate(devisSchema), async (req, res) => {
   const { surface, ville, adresse, date_souhaitee, photos, plans, nb_panneaux, prix_unitaire, cout_estime_brut, total_final } = req.body;
   const result = await pool.query(
-    `INSERT INTO devis (utilisateur_id, surface, ville, adresse, date_souhaitee, nb_panneaux, prix_unitaire, cout_estime_brut, total_final, statut) 
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'envoye') RETURNING *`,
-    [req.user.id, surface, ville, adresse, date_souhaitee, nb_panneaux || null, prix_unitaire || null, cout_estime_brut || null, total_final || null]
+    `INSERT INTO devis (utilisateur_id, surface, ville, adresse, date_souhaitee, photos, nb_panneaux, prix_unitaire, cout_estime_brut, total_final, statut) 
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'envoye') RETURNING *`,
+    [
+      req.user.id, surface, ville, adresse, date_souhaitee || null,
+      Array.isArray(photos) ? photos : [],
+      nb_panneaux || null, prix_unitaire || null, cout_estime_brut || null, total_final || null
+    ]
   );
 
   // Notifications

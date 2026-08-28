@@ -23,6 +23,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import pool from './db.js';
 import { verifyToken } from './middleware/auth.js';
+import logger from './services/logger.js';
 
 dotenv.config();
 
@@ -81,7 +82,7 @@ app.get('/api/health', async (req, res) => {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', db: 'up', timestamp: new Date().toISOString() });
   } catch (err) {
-    console.error('Healthcheck DB KO:', err.message);
+    logger.error('Healthcheck DB KO', { message: err.message });
     res.status(503).json({ status: 'degraded', db: 'down', timestamp: new Date().toISOString() });
   }
 });
@@ -142,9 +143,18 @@ app.get('/api/devis/:id/pdf', verifyToken, async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="devis-${id}.pdf"`);
     res.send(buffer);
   } catch (err) {
-    console.error('PDF error:', err);
+    logger.error('PDF error', { message: err.message, id });
     res.status(500).json({ error: 'Erreur génération PDF' });
   }
+});
+
+// --- Middleware de logs HTTP (requêtes) ---
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.http(`${req.method} ${req.originalUrl}`, { status: res.statusCode, durationMs: Date.now() - start });
+  });
+  next();
 });
 
 // --- Gestion des erreurs 404 ---
@@ -154,7 +164,7 @@ app.use((req, res) => {
 
 // --- Middleware global des erreurs ---
 app.use((err, req, res, next) => {
-  console.error('Erreur serveur:', err);
+  logger.error('Erreur serveur', { message: err.message, stack: err.stack });
   res.status(500).json({ error: 'Erreur interne du serveur' });
 });
 
@@ -163,7 +173,7 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log(`✅ Serveur BTT démarré sur le port ${PORT}`);
+    logger.info(`Serveur BTT démarré sur le port ${PORT}`);
   });
 }
 

@@ -1,13 +1,12 @@
 import { z } from 'zod';
 
-// Schémas de validation réutilisables
+// Schemas de validation reutilisables
 
 export const registerSchema = z.object({
-  nom: z.string().min(2, 'Le nom doit contenir au moins 2 caractères').max(100),
+  nom: z.string().min(2, 'Le nom doit contenir au moins 2 caracteres').max(100),
   email: z.string().email('Email invalide'),
-  telephone: z.string().regex(/^\+?[0-9]{8,15}$/, 'Numéro de téléphone invalide').optional(),
-  mot_de_passe: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
-  role: z.enum(['client', 'technicien', 'admin']).default('client')
+  telephone: z.string().regex(/^\+?[0-9]{8,15}$/, 'Numero de telephone invalide').optional(),
+  mot_de_passe: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caracteres'),
 });
 
 export const loginSchema = z.object({
@@ -17,7 +16,7 @@ export const loginSchema = z.object({
 });
 
 export const devisSchema = z.object({
-  surface: z.number().positive('Surface doit être positive'),
+  surface: z.number().positive('Surface doit etre positive'),
   ville: z.string().min(2, 'Ville requise'),
   adresse: z.string().min(5, 'Adresse requise'),
   date_souhaitee: z.string().datetime().optional(),
@@ -26,17 +25,17 @@ export const devisSchema = z.object({
 });
 
 export const calculateurSchema = z.object({
-  longueur: z.number().positive('Longueur doit être positive'),
-  largeur: z.number().positive('Largeur doit être positive'),
+  longueur: z.number().positive('Longueur doit etre positive'),
+  largeur: z.number().positive('Largeur doit etre positive'),
   type_batiment: z.enum(['residentiel', 'commercial', 'industriel']),
-  etage: z.number().int().nonnegative('Étage doit être positif').optional(),
+  etage: z.number().int().nonnegative('Etage doit etre positif').optional(),
   epaisseur: z.string().optional(),
   produit_id: z.number().int().positive('Produit ID invalide')
 });
 
 export const missionSchema = z.object({
   devis_id: z.number().int().positive('Devis ID invalide'),
-  technicien_id: z.number().int().positive('Technicien ID invalide'),
+  technicien_id: z.string().uuid('Technicien ID invalide'),
   date_visite: z.string().datetime()
 });
 
@@ -51,7 +50,7 @@ export const mesuresSchema = z.object({
 
 export const paiementSchema = z.object({
   devis_id: z.number().int().positive().optional(),
-  montant: z.number().positive('Montant doit être positif'),
+  montant: z.number().positive('Montant doit etre positif'),
   methode: z.enum(['orange_money', 'mtn', 'mobile_money', 'stripe', 'carte', 'virement']),
   telephone: z.string().optional(),
   num_carte: z.string().optional(),
@@ -66,9 +65,9 @@ export const produitSchema = z.object({
   categorie: z.string(),
   application: z.string().optional(),
   application_en: z.string().optional(),
-  prix_ttc: z.number().positive('Prix TTC doit être positif'),
-  poids_unite: z.number().positive('Poids unitaire doit être positif'),
-  qte_conteneur: z.number().int().positive('Quantité conteneur invalide'),
+  prix_ttc: z.number().positive('Prix TTC doit etre positif'),
+  poids_unite: z.number().positive('Poids unitaire doit etre positif'),
+  qte_conteneur: z.number().int().positive('Quantite conteneur invalide'),
   statut_stock: z.string().default('disponible')
 });
 
@@ -82,7 +81,7 @@ export const professionnelSchema = z.object({
   nb_chantiers: z.number().int().nonnegative().optional()
 });
 
-// Middleware générique de validation
+// Middleware generique de validation
 export const validate = (schema) => {
   return (req, res, next) => {
     try {
@@ -91,7 +90,7 @@ export const validate = (schema) => {
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
-          error: 'Données invalides',
+          error: 'Donnees invalides',
           details: error.issues.map(e => ({
             champ: Array.isArray(e.path) ? e.path.join('.') : String(e.path),
             message: e.message
@@ -103,7 +102,7 @@ export const validate = (schema) => {
   };
 };
 
-// Validation des paramètres d'URL
+// Validation des parametres d URL
 export const validateParams = (schema) => {
   return (req, res, next) => {
     try {
@@ -112,7 +111,7 @@ export const validateParams = (schema) => {
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
-          error: 'Paramètres invalides',
+          error: 'Parametres invalides',
           details: error.issues.map(e => ({
             champ: Array.isArray(e.path) ? e.path.join('.') : String(e.path),
             message: e.message
@@ -125,9 +124,9 @@ export const validateParams = (schema) => {
 };
 
 export const idParamSchema = z.object({
-  id: z.string().regex(/^\d+$/, 'ID doit être un nombre')
+  id: z.string().regex(/^\d+$/, 'ID doit etre un nombre')
 });
 
 export const missionIdParamSchema = z.object({
-  mission_id: z.string().regex(/^\d+$/, 'Mission ID doit être un nombre')
+  mission_id: z.string().regex(/^\d+$/, 'Mission ID doit etre un nombre')
 });

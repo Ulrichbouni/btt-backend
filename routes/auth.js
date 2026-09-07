@@ -27,7 +27,7 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 router.post("/register", validate(registerSchema), async (req, res) => {
-  const { nom, email, telephone, mot_de_passe, role } = req.body;
+  const { nom, email, telephone, mot_de_passe } = req.body;
   try {
     const existing = await pool.query("SELECT id FROM utilisateurs WHERE email = $1", [email]);
     if (existing.rows.length > 0) return res.status(409).json({ error: "Cet email est deja utilise" });
@@ -35,7 +35,7 @@ router.post("/register", validate(registerSchema), async (req, res) => {
     const hash = await bcrypt.hash(mot_de_passe, 10);
     const result = await pool.query(
       "INSERT INTO utilisateurs (nom, email, telephone, mot_de_passe_hash, role, telephone_verified) VALUES ($1,$2,$3,$4,$5,true) RETURNING id, nom, email, role",
-      [nom, email, telephone, hash, role || "client"]
+      [nom, email, telephone, hash, "client"]
     );
 // Notifications: email de bienvenue + WhatsApp
     await EmailService.sendWelcome(result.rows[0].nom, email);

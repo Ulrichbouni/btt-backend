@@ -108,6 +108,50 @@ router.get("/me", verifyToken, async (req, res) => {
   res.json(u.rows[0]);
 });
 
+// --- Modifier le profil de l'utilisateur connecté ---
+router.put("/me", verifyToken, async (req, res) => {
+  const { nom, email, telephone, mot_de_passe } = req.body;
+  const userId = req.user.id;
+
+  try {
+    // Vérifier si le nouvel email est déjà utilisé par un autre utilisateur
+    if (email) {
+      const existing = await pool.query("SELECT id FROM utilisateurs WHERE email = $1 AND id != $2", [email, userId]);
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: "Cet email est déjà utilisé" });
+      }
+    }
+
+    // Construire la requête de mise à jour dynamiquement
+    const updates = [];
+    const params = [];
+    if (nom) { params.push(nom); updates.push(`nom = $${params.length}`); }
+    if (email) { params.push(email); updates.push(`email = $${params.length}`); }
+    if (telephone) { params.push(telephone); updates.push(`telephone = $${params.length}`); }
+    if (mot_de_passe) {
+      if (mot_de_passe.length < 6) return res.status(400).json({ error: "Mot de passe trop court (min 6 caractères)" });
+      const hash = await bcrypt.hash(mot_de_passe, 10);
+      params.push(hash);
+      updates.push(`mot_de_passe_hash = $${params.length}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "Aucune modification fournie" });
+    }
+
+    params.push(userId);
+    const result = await pool.query(
+      `UPDATE utilisateurs SET ${updates.join(", ")} WHERE id = $${params.length} RETURNING id, nom, email, role, telephone`,
+      params
+    );
+
+    res.json({ message: "Profil mis à jour", user: result.rows[0] });
+  } catch (err) {
+    console.error('Erreur update profil:', err);
+    res.status(500).json({ error: "Erreur lors de la mise à jour du profil" });
+  }
+});
+
 // --- Mot de passe oublié (envoie un token de réinitialisation par email) ---
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;

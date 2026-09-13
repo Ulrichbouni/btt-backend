@@ -59,10 +59,18 @@ const authLimiter = rateLimit({
 });
 
 // --- Middleware CORS sécurisé ---
+// Autorise l'origine configurée (FRONTEND_URL), toutes les sous-domaines *.vercel.app
+// (déploiements/dev previews) et les requêtes sans origine (mobile, curl).
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL || 'https://votre-domaine.com'
-    : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // requêtes sans Origin (curl, mobile natif)
+    if (process.env.NODE_ENV !== 'production') {
+      return cb(null, ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'].includes(origin));
+    }
+    const allowed = process.env.FRONTEND_URL || 'https://votre-domaine.com';
+    const isVercel = origin.endsWith('.vercel.app');
+    cb(null, origin === allowed || isVercel);
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };

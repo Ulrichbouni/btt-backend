@@ -12,18 +12,29 @@ import logger from "../services/logger.js";
 const router = express.Router();
 
 router.post("/request-otp", async (req, res) => {
-  const { telephone } = req.body;
-  if (!telephone) return res.status(400).json({ error: "Telephone requis" });
-  const sent = await WhatsAppService.sendVerificationCode(telephone);
-  res.json({ success: !!sent.success, mock: !!sent.mock });
+  try {
+    const { telephone, channel } = req.body;
+    if (!telephone) return res.status(400).json({ error: "Telephone requis" });
+    const sent = await WhatsAppService.sendVerificationCode(telephone, channel || 'sms');
+    if (!sent.success) return res.status(502).json({ error: "Envoi OTP impossible", details: sent.error });
+    res.json({ success: true, mock: !!sent.mock });
+  } catch (err) {
+    logger.error('request-otp error', { message: err.message });
+    res.status(500).json({ error: "Erreur interne du serveur" });
+  }
 });
 
 router.post("/verify-otp", async (req, res) => {
-  const { telephone, code } = req.body;
-  if (!telephone || !code) return res.status(400).json({ error: "Telephone et code requis" });
-  const check = await WhatsAppService.checkVerificationCode(telephone, code);
-  if (!check.success) return res.status(400).json({ error: "OTP invalide ou expire" });
-  res.json({ success: true });
+  try {
+    const { telephone, code } = req.body;
+    if (!telephone || !code) return res.status(400).json({ error: "Telephone et code requis" });
+    const check = await WhatsAppService.checkVerificationCode(telephone, code);
+    if (!check.success) return res.status(400).json({ error: "OTP invalide ou expire" });
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('verify-otp error', { message: err.message });
+    res.status(500).json({ error: "Erreur interne du serveur" });
+  }
 });
 
 router.post("/register", validate(registerSchema), async (req, res) => {

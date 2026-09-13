@@ -34,13 +34,13 @@ export class WhatsAppService {
     }
   }
 
-  async sendVerificationCode(phone) {
+  async sendVerificationCode(phone, channel = 'sms') {
     if (!this.client || !this.verifyServiceSid) {
       console.log('[Verify Mock] code for', phone);
       return { success: true, mock: true };
     }
     try {
-      const verification = await this.client.verify.v2.services(this.verifyServiceSid).verifications.create({ to: phone });
+      const verification = await this.client.verify.v2.services(this.verifyServiceSid).verifications.create({ to: phone, channel });
       return { success: true, status: verification.status };
     } catch (error) {
       console.error('Twilio Verify error:', error);

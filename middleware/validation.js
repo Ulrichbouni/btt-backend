@@ -7,6 +7,7 @@ export const registerSchema = z.object({
   email: z.string().email('Email invalide'),
   telephone: z.string().regex(/^\+?[0-9]{8,15}$/, 'Numero de telephone invalide').optional(),
   mot_de_passe: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caracteres'),
+  phone_verification_token: z.string().optional(),
 });
 
 export const loginSchema = z.object({

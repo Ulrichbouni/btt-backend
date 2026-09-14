@@ -30,7 +30,13 @@ router.post("/verify-otp", async (req, res) => {
     if (!telephone || !code) return res.status(400).json({ error: "Telephone et code requis" });
     const check = await WhatsAppService.checkVerificationCode(telephone, code);
     if (!check.success) return res.status(400).json({ error: "OTP invalide ou expire" });
-    res.json({ success: true });
+    // Preuve signée que le téléphone a été vérifié (valable 15 min)
+    const phone_verification_token = jwt.sign(
+      { telephone, purpose: "phone-verified" },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+    res.json({ success: true, phone_verification_token });
   } catch (err) {
     logger.error('verify-otp error', { message: err.message });
     res.status(500).json({ error: "Erreur interne du serveur" });
@@ -38,15 +44,28 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 router.post("/register", validate(registerSchema), async (req, res) => {
-  const { nom, email, telephone, mot_de_passe } = req.body;
+  const { nom, email, telephone, mot_de_passe, phone_verification_token } = req.body;
   try {
     const existing = await pool.query("SELECT id FROM utilisateurs WHERE email = $1", [email]);
     if (existing.rows.length > 0) return res.status(409).json({ error: "Cet email est deja utilise" });
 
+    // Le téléphone n'est marqué vérifié que si un token signé (OTP validé) est fourni
+    let telephoneVerified = false;
+    if (phone_verification_token) {
+      try {
+        const decoded = jwt.verify(phone_verification_token, process.env.JWT_SECRET);
+        if (decoded.purpose === "phone-verified" && (!telephone || decoded.telephone === telephone)) {
+          telephoneVerified = true;
+        }
+      } catch {
+        logger.warn('register: phone_verification_token invalide', { email });
+      }
+    }
+
     const hash = await bcrypt.hash(mot_de_passe, 10);
     const result = await pool.query(
-      "INSERT INTO utilisateurs (nom, email, telephone, mot_de_passe_hash, role, telephone_verified) VALUES ($1,$2,$3,$4,$5,true) RETURNING id, nom, email, role",
-      [nom, email, telephone, hash, "client"]
+      "INSERT INTO utilisateurs (nom, email, telephone, mot_de_passe_hash, role, telephone_verified) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, nom, email, role",
+      [nom, email, telephone, hash, "client", telephoneVerified]
     );
 // Notifications: email de bienvenue + WhatsApp
     await EmailService.sendWelcome(result.rows[0].nom, email);

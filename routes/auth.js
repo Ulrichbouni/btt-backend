@@ -49,6 +49,13 @@ router.post("/register", validate(registerSchema), async (req, res) => {
     const existing = await pool.query("SELECT id FROM utilisateurs WHERE email = $1", [email]);
     if (existing.rows.length > 0) return res.status(409).json({ error: "Cet email est deja utilise" });
 
+    if (telephone) {
+      const existingTel = await pool.query("SELECT id FROM utilisateurs WHERE telephone = $1", [telephone]);
+      if (existingTel.rows.length > 0) {
+        return res.status(409).json({ error: "Ce numero de telephone est deja utilise. Connectez-vous ou utilisez un autre numero." });
+      }
+    }
+
     // Le téléphone n'est marqué vérifié que si un token signé (OTP validé) est fourni
     let telephoneVerified = false;
     if (phone_verification_token) {

@@ -13,7 +13,6 @@ router.get('/', verifyToken, async (req, res) => {
   if (statut) { params.push(statut); query += ` AND statut_stock = $${params.length}`; }
   query += ' ORDER BY id';
   const result = await pool.query(query, params);
-  // Si langue = 'en', renvoyer nom_en, application_en
   if (langue === 'en') {
     const data = result.rows.map(p => ({
       ...p,
@@ -37,8 +36,7 @@ router.post('/', verifyToken, validate(produitSchema), async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin requis' });
   const { nom, nom_en, epaisseur, categorie, application, application_en, prix_ttc, poids_unite, qte_conteneur, statut_stock } = req.body;
   const result = await pool.query(
-    `INSERT INTO produits (nom, nom_en, epaisseur, categorie, application, application_en, prix_ttc, poids_unite, qte_conteneur, statut_stock) 
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    `INSERT INTO produits (nom, nom_en, epaisseur, categorie, application, application_en, prix_ttc, poids_unite, qte_conteneur, statut_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [nom, nom_en, epaisseur, categorie, application, application_en, prix_ttc, poids_unite, qte_conteneur, statut_stock]
   );
   res.status(201).json(result.rows[0]);
@@ -55,6 +53,14 @@ router.put('/:id', verifyToken, async (req, res) => {
   );
   if (!result.rows.length) return res.status(404).json({ error: 'Produit non trouvé' });
   res.json(result.rows[0]);
+});
+
+// Admin : Supprimer un produit
+router.delete('/:id', verifyToken, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin requis' });
+  const result = await pool.query('DELETE FROM produits WHERE id = $1 RETURNING id', [req.params.id]);
+  if (!result.rows.length) return res.status(404).json({ error: 'Produit non trouvé' });
+  res.json({ message: 'Produit supprimé', id: result.rows[0].id });
 });
 
 export default router;

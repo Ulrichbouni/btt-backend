@@ -48,61 +48,9 @@ router.delete("/utilisateurs/:id", verifyToken, isAdmin, async (req, res) => {
   res.json({ message: "Utilisateur supprimé" });
 });
 
-router.get("/missions", verifyToken, isAdmin, async (req, res) => {
-  const result = await pool.query(
-    `SELECT m.*, d.ville, d.adresse, d.surface,
-            u.nom AS client_nom,
-            tech.nom AS technicien_nom
-     FROM missions_technicien m
-     LEFT JOIN devis d ON d.id = m.devis_id
-     LEFT JOIN utilisateurs u ON u.id = d.utilisateur_id
-     LEFT JOIN utilisateurs tech ON tech.id = m.technicien_id
-     ORDER BY m.created_at DESC`,
-  );
-  res.json(result.rows);
-});
-
-router.post("/missions", verifyToken, isAdmin, async (req, res) => {
-  const { devis_id, technicien_id, date_visite } = req.body;
-  const result = await pool.query(
-    `INSERT INTO missions_technicien (devis_id, technicien_id, date_visite) VALUES ($1,$2,$3) RETURNING *`,
-    [devis_id, technicien_id, date_visite],
-  );
-  res.status(201).json(result.rows[0]);
-});
-
-router.put("/missions/:mission_id", verifyToken, isAdmin, async (req, res) => {
-  const { mission_id } = req.params;
-  const { technicien_id, date_visite, statut } = req.body;
-
-  const result = await pool.query(
-    `UPDATE missions_technicien
-     SET technicien_id = COALESCE($1, technicien_id),
-         date_visite = COALESCE($2, date_visite),
-         statut = COALESCE($3, statut)
-     WHERE id = $4
-     RETURNING *`,
-    [technicien_id ?? null, date_visite ?? null, statut ?? null, mission_id],
-  );
-
-  if (!result.rows.length)
-    return res.status(404).json({ error: "Mission introuvable" });
-  res.json(result.rows[0]);
-});
-
-router.delete(
-  "/missions/:mission_id",
-  verifyToken,
-  isAdmin,
-  async (req, res) => {
-    const result = await pool.query(
-      "DELETE FROM missions_technicien WHERE id = $1 RETURNING id",
-      [req.params.mission_id],
-    );
-    if (!result.rows.length)
-      return res.status(404).json({ error: "Mission introuvable" });
-    res.json({ message: "Mission supprimée", id: result.rows[0].id });
-  },
-);
+// NOTE : la gestion des missions (lister/créer/modifier/supprimer) se fait
+// via /api/missions/* (voir routes/missions.js), qui couvre exactement les
+// mêmes besoins admin en plus complet (notification WhatsApp à la création,
+// flux de validation des mesures terrain). Pas de duplication ici.
 
 export default router;

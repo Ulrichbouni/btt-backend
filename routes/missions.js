@@ -5,6 +5,21 @@ import { validate, missionSchema, mesuresSchema } from '../middleware/validation
 import WhatsAppService from '../services/whatsapp.js';
 const router = express.Router();
 
+// ADMIN : lister toutes les missions
+router.get('/', verifyToken, isAdmin, async (req, res) => {
+  const result = await pool.query(
+    `SELECT m.*, d.ville, d.adresse, d.surface,
+            u.nom AS client_nom,
+            tech.nom AS technicien_nom
+     FROM missions_technicien m
+     LEFT JOIN devis d ON d.id = m.devis_id
+     LEFT JOIN utilisateurs u ON u.id = d.utilisateur_id
+     LEFT JOIN utilisateurs tech ON tech.id = m.technicien_id
+     ORDER BY m.created_at DESC`
+  );
+  res.json(result.rows);
+});
+
 // --- TECHNICIEN : Voir ses missions ---
 router.get('/technicien/mes-missions', verifyToken, async (req, res) => {
   if (req.user.role !== 'technicien' && req.user.role !== 'admin') {
@@ -12,7 +27,7 @@ router.get('/technicien/mes-missions', verifyToken, async (req, res) => {
   }
   const id = req.user.role === 'admin' ? req.query.technicien_id : req.user.id;
   if (!id) return res.status(400).json({ error: 'ID technicien manquant' });
-  
+
   const result = await pool.query(
     `SELECT m.*, d.ville, d.adresse, d.surface, u.nom as client_nom 
      FROM missions_technicien m 
@@ -47,27 +62,25 @@ router.get('/:mission_id', verifyToken, async (req, res) => {
 router.post('/:mission_id/mesures', verifyToken, validate(mesuresSchema), async (req, res) => {
   const { mission_id } = req.params;
   const { longueur_murs, hauteur_sous_plafond, surface_ouverte, perimetre, photo_urls, croquis_url } = req.body;
-  
-  // Vérifier la mission
+
   const mission = await pool.query('SELECT technicien_id FROM missions_technicien WHERE id = $1', [mission_id]);
   if (!mission.rows.length) return res.status(404).json({ error: 'Mission inconnue' });
   if (mission.rows[0].technicien_id !== req.user.id && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Accès refusé' });
   }
-  
-  // Calculs automatiques
+
   const surface_reelle = (parseFloat(longueur_murs) * parseFloat(hauteur_sous_plafond)) - (parseFloat(surface_ouverte) || 0);
   const nb_panneaux_reel = Math.ceil(surface_reelle / 1.2);
-  
+
   const result = await pool.query(
     `INSERT INTO mesures_terrain 
-     (mission_id, longueur_murs, hauteur_sous_plafond, surface_ouverte, perimetre, 
+     (mission_id, longueur_murs, hauteur_sous_plafond, surface_ouverte, perimetre,
       surface_reelle, nb_panneaux_reel, photo_urls, croquis_url) 
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [mission_id, longueur_murs, hauteur_sous_plafond, surface_ouverte, perimetre,
-     surface_reelle, nb_panneaux_reel, photo_urls || [], croquis_url]
+      surface_reelle, nb_panneaux_reel, photo_urls || [], croquis_url]
   );
-  
+
   await pool.query('UPDATE missions_technicien SET statut = $1 WHERE id = $2', ['en_cours', mission_id]);
   res.status(201).json(result.rows[0]);
 });
@@ -79,8 +92,7 @@ router.put('/:mission_id/valider', verifyToken, isAdmin, async (req, res) => {
   if (!mesures.rows.length) return res.status(400).json({ error: 'Aucune mesure saisie' });
   await pool.query('UPDATE mesures_terrain SET valide_par_admin = true WHERE mission_id = $1', [mission_id]);
   await pool.query('UPDATE missions_technicien SET statut = $1 WHERE id = $2', ['terminee', mission_id]);
-  
-  // Mettre à jour le chantier avec les mesures validées
+
   const devis = await pool.query('SELECT devis_id FROM missions_technicien WHERE id = $1', [mission_id]);
   if (devis.rows.length) {
     await pool.query('UPDATE chantiers SET mission_id = $1 WHERE devis_id = $2', [mission_id, devis.rows[0].devis_id]);
@@ -96,7 +108,6 @@ router.post('/', verifyToken, isAdmin, validate(missionSchema), async (req, res)
     [devis_id, technicien_id, date_visite]
   );
 
-  // Notification au technicien par WhatsApp
   const tech = await pool.query('SELECT telephone, nom FROM utilisateurs WHERE id=$1', [technicien_id]);
   if (tech.rows[0]?.telephone) {
     WhatsAppService.sendMissionNotification(
@@ -108,6 +119,32 @@ router.post('/', verifyToken, isAdmin, validate(missionSchema), async (req, res)
   }
 
   res.status(201).json(result.rows[0]);
+});
+
+// --- ADMIN : Modifier une mission ---
+router.put('/:mission_id', verifyToken, isAdmin, async (req, res) => {
+  const { mission_id } = req.params;
+  const { technicien_id, date_visite, statut } = req.body;
+
+  const result = await pool.query(
+    `UPDATE missions_technicien
+     SET technicien_id = COALESCE($1, technicien_id),
+         date_visite = COALESCE($2, date_visite),
+         statut = COALESCE($3, statut)
+     WHERE id = $4
+     RETURNING *`,
+    [technicien_id ?? null, date_visite ?? null, statut ?? null, mission_id]
+  );
+
+  if (!result.rows.length) return res.status(404).json({ error: 'Mission introuvable' });
+  res.json(result.rows[0]);
+});
+
+// --- ADMIN : Supprimer une mission ---
+router.delete('/:mission_id', verifyToken, isAdmin, async (req, res) => {
+  const result = await pool.query('DELETE FROM missions_technicien WHERE id = $1 RETURNING id', [req.params.mission_id]);
+  if (!result.rows.length) return res.status(404).json({ error: 'Mission introuvable' });
+  res.json({ message: 'Mission supprimée', id: result.rows[0].id });
 });
 
 export default router;

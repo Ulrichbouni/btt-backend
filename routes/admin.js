@@ -52,5 +52,40 @@ router.delete("/utilisateurs/:id", verifyToken, isAdmin, async (req, res) => {
 // via /api/missions/* (voir routes/missions.js), qui couvre exactement les
 // mêmes besoins admin en plus complet (notification WhatsApp à la création,
 // flux de validation des mesures terrain). Pas de duplication ici.
+// Admin : modifier les infos d'un utilisateur (nom, email, telephone)
+router.put("/utilisateurs/:id", verifyToken, isAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { nom, email, telephone } = req.body;
 
+  if (!nom && !email && !telephone) {
+    return res.status(400).json({ error: "Aucun champ à modifier" });
+  }
+  if (email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Email invalide" });
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE utilisateurs
+       SET nom = COALESCE($1, nom),
+           email = COALESCE($2, email),
+           telephone = COALESCE($3, telephone)
+       WHERE id = $4
+       RETURNING id, nom, email, telephone, role`,
+      [nom || null, email || null, telephone || null, id],
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    }
+    res.json({ message: "Utilisateur mis à jour", user: result.rows[0] });
+  } catch (err) {
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Email ou téléphone déjà utilisé" });
+    }
+    throw err;
+  }
+});
 export default router;

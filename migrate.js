@@ -8,6 +8,14 @@ import pool from "./db.js";
 
 const MIGRATIONS = [
   {
+    name: "2026-09-17_chantiers_photos",
+    queries: [
+      `ALTER TABLE chantiers ADD COLUMN IF NOT EXISTS photos_avant JSONB DEFAULT '[]'::jsonb`,
+      `ALTER TABLE chantiers ADD COLUMN IF NOT EXISTS photos_apres JSONB DEFAULT '[]'::jsonb`,
+      `CREATE INDEX IF NOT EXISTS idx_chantiers_etape ON chantiers(etape)`,
+    ],
+  },
+  {
     name: "2026-08-26_utilisateurs_telephone_verified",
     queries: [
       `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS telephone_verified BOOLEAN DEFAULT false`,

@@ -187,5 +187,112 @@ router.post("/:id/valider", verifyToken, async (req, res) => {
   }
   res.json({ message: "Devis validé, chantier créé" });
 });
+router.delete("/:id", verifyToken, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Admin requis" });
+  }
+  const { id } = req.params;
 
+  const links = await pool.query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM chantiers WHERE devis_id = $1) AS nb_chantiers,
+       (SELECT COUNT(*)::int FROM paiements WHERE devis_id = $1) AS nb_paiements`,
+    [id],
+  );
+  const { nb_chantiers, nb_paiements } = links.rows[0];
+  if (nb_chantiers > 0 || nb_paiements > 0) {
+    return res.status(400).json({
+      error:
+        "Impossible de supprimer : ce devis a des chantiers ou paiements liés",
+      nb_chantiers,
+      nb_paiements,
+    });
+  }
+
+  const result = await pool.query(
+    "DELETE FROM devis WHERE id = $1 RETURNING id",
+    [id],
+  );
+  if (!result.rows.length)
+    return res.status(404).json({ error: "Devis non trouvé" });
+  res.json({ message: "Devis supprimé", id: result.rows[0].id });
+});
+router.post("/admin", verifyToken, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Admin requis" });
+  }
+  const {
+    utilisateur_id,
+    surface,
+    ville,
+    adresse,
+    date_souhaitee,
+    produit_id,
+    remise_pourcentage,
+    frais_transport,
+    frais_divers,
+  } = req.body;
+
+  if (!utilisateur_id || !surface || !ville) {
+    return res
+      .status(400)
+      .json({ error: "utilisateur_id, surface et ville requis" });
+  }
+
+  const client = await pool.query("SELECT id FROM utilisateurs WHERE id = $1", [
+    utilisateur_id,
+  ]);
+  if (!client.rows.length)
+    return res.status(404).json({ error: "Client non trouvé" });
+
+  let nb_panneaux = null;
+  let prix_unitaire = null;
+  let cout_estime_brut = null;
+
+  if (produit_id) {
+    const produit = await pool.query(
+      "SELECT prix_ttc FROM produits WHERE id = $1",
+      [produit_id],
+    );
+    if (!produit.rows.length)
+      return res.status(404).json({ error: "Produit non trouvé" });
+    const surface_panneau = 1.2;
+    nb_panneaux = Math.ceil((surface / surface_panneau) * 1.1);
+    prix_unitaire = produit.rows[0].prix_ttc;
+    cout_estime_brut = Math.round(nb_panneaux * prix_unitaire);
+  }
+
+  const remise = parseFloat(remise_pourcentage) || 0;
+  const transport = parseFloat(frais_transport) || 0;
+  const divers = parseFloat(frais_divers) || 0;
+  const total_final = cout_estime_brut
+    ? cout_estime_brut * (1 - remise / 100) + transport + divers
+    : null;
+
+  const result = await pool.query(
+    `INSERT INTO devis
+       (utilisateur_id, surface, ville, adresse, date_souhaitee, produit_id,
+        nb_panneaux, prix_unitaire, cout_estime_brut, remise_pourcentage,
+        frais_transport, frais_divers, total_final, statut)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'envoye')
+     RETURNING *`,
+    [
+      utilisateur_id,
+      surface,
+      ville,
+      adresse || null,
+      date_souhaitee || null,
+      produit_id || null,
+      nb_panneaux,
+      prix_unitaire,
+      cout_estime_brut,
+      remise,
+      transport,
+      divers,
+      total_final,
+    ],
+  );
+
+  res.status(201).json(result.rows[0]);
+});
 export default router;

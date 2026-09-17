@@ -45,7 +45,7 @@ export const calculateurSchema = z.object({
 
 export const missionSchema = z.object({
   devis_id: z.number().int().positive("Devis ID invalide"),
-  technicien_id: z.number().int().positive("Technicien ID invalide"),
+  technicien_id: z.string().uuid("Technicien ID doit être un UUID"),
   date_visite: z.string().datetime(),
 });
 

@@ -37,18 +37,30 @@ router.get('/:id', verifyToken, async (req, res) => {
   res.json(row);
 });
 
-// Avancer l'étape (admin ou technicien)
+// Avancer l'etape (admin ou TECHNICIEN ASSIGNE uniquement)
+// FIX : avant, n'importe quel technicien pouvait avancer n'importe quel chantier.
 router.put('/:id/avancer', verifyToken, async (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'technicien') {
     return res.status(403).json({ error: 'Admin ou technicien requis' });
   }
+  const row = await pool.query(
+    `SELECT c.etape, c.historique, m.technicien_id
+     FROM chantiers c
+     JOIN devis d ON c.devis_id = d.id
+     LEFT JOIN missions_technicien m ON m.devis_id = d.id
+     WHERE c.id = $1`,
+    [req.params.id]
+  );
+  if (!row.rows.length) return res.status(404).json({ error: 'Chantier non trouvé' });
+  if (req.user.role === 'technicien' && row.rows[0].technicien_id !== req.user.id) {
+    return res.status(403).json({ error: 'Seul le technicien assigne peut avancer ce chantier' });
+  }
   const etapes = ['Devis reçu', 'Visite technique', 'Commande validée', 'Livraison', 'Pose en cours', 'Chantier terminé'];
-  const chantier = await pool.query('SELECT etape, historique FROM chantiers WHERE id = $1', [req.params.id]);
-  if (!chantier.rows.length) return res.status(404).json({ error: 'Chantier non trouvé' });
-  const currentIndex = etapes.indexOf(chantier.rows[0].etape);
+  const chantier = row.rows[0];
+  const currentIndex = etapes.indexOf(chantier.etape);
   if (currentIndex >= etapes.length - 1) return res.status(400).json({ error: 'Déjà à la dernière étape' });
   const nextEtape = etapes[currentIndex + 1];
-  const historique = chantier.rows[0].historique || [];
+  const historique = chantier.historique || [];
   historique.push({ date: new Date().toISOString(), action: `Passage à l'étape: ${nextEtape}`, par: req.user.id });
   await pool.query(
     `UPDATE chantiers SET etape = $1, historique = $2 WHERE id = $3`,

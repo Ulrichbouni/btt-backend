@@ -8,66 +8,170 @@ import WhatsAppService from "../services/whatsapp.js";
 const router = express.Router();
 const campay = new CampayService();
 
-router.post("/initier", verifyToken, validate(paiementSchema), async (req, res) => {
-  const { devis_id, montant, methode, telephone, customer_name, customer_email } = req.body;
-  try {
-    const reference = `BTT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const redirectUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/paiement?ref=${reference}` : undefined;
+router.post(
+  "/initier",
+  verifyToken,
+  validate(paiementSchema),
+  async (req, res) => {
+    const {
+      devis_id,
+      montant,
+      methode,
+      telephone,
+      customer_name,
+      customer_email,
+    } = req.body;
+    try {
+      // Sécurité : si le paiement est lié à un devis, le montant DOIT correspondre
+      // au total validé par l'admin — on ne fait jamais confiance au montant envoyé
+      // par le client seul (sinon n'importe qui pourrait payer 1 FCFA pour un devis
+      // de plusieurs millions).
+      if (devis_id) {
+        const devis = await pool.query(
+          "SELECT utilisateur_id, total_final FROM devis WHERE id = $1",
+          [devis_id],
+        );
+        if (!devis.rows.length)
+          return res.status(404).json({ error: "Devis introuvable" });
+        if (
+          devis.rows[0].utilisateur_id !== req.user.id &&
+          req.user.role !== "admin"
+        ) {
+          return res.status(403).json({ error: "Accès refusé" });
+        }
+        if (devis.rows[0].total_final === null) {
+          return res.status(400).json({
+            error:
+              "Ce devis n'a pas encore été validé par l'équipe, paiement impossible",
+          });
+        }
+        const attendu = parseFloat(devis.rows[0].total_final);
+        const recu = parseFloat(montant);
+        // tolérance de 1 FCFA pour les arrondis
+        if (Math.abs(attendu - recu) > 1) {
+          return res.status(400).json({
+            error: `Montant incorrect. Montant attendu pour ce devis : ${attendu} FCFA`,
+          });
+        }
+      }
 
-    const result = await campay.initPayment({
-      amount: montant,
-      currency: "XAF",
-      description: devis_id ? `Devis #${devis_id}` : "Paiement BTT-LUX",
-      externalReference: reference,
-      phone: telephone,
-      redirectUrl
-    });
+      const reference = `BTT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const redirectUrl = process.env.FRONTEND_URL
+        ? `${process.env.FRONTEND_URL}/paiement?ref=${reference}`
+        : undefined;
 
-    await pool.query(
-      `INSERT INTO paiements (utilisateur_id, devis_id, methode, montant, reference, statut, payment_data) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.user.id, devis_id || null, methode || "mobile_money", montant, reference, "en_attente", JSON.stringify(result)]
-    );
+      const result = await campay.initPayment({
+        amount: montant,
+        currency: "XAF",
+        description: devis_id ? `Devis #${devis_id}` : "Paiement BTT-LUX",
+        externalReference: reference,
+        phone: telephone,
+        redirectUrl,
+      });
 
-    const user = await pool.query("SELECT telephone FROM utilisateurs WHERE id=$1", [req.user.id]);
-    const phone = user.rows[0]?.telephone || telephone;
-    WhatsAppService.sendPaymentConfirmation(phone, reference, montant, "en_attente");
+      await pool.query(
+        `INSERT INTO paiements (utilisateur_id, devis_id, methode, montant, reference, statut, payment_data) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          req.user.id,
+          devis_id || null,
+          methode || "mobile_money",
+          montant,
+          reference,
+          "en_attente",
+          JSON.stringify(result),
+        ],
+      );
 
-    res.json({ success: true, reference, ...result });
-  } catch (err) {
-    console.error("Erreur Campay:", err);
-    res.status(400).json({ error: err.message || "Erreur Campay" });
-  }
-});
+      const user = await pool.query(
+        "SELECT telephone FROM utilisateurs WHERE id=$1",
+        [req.user.id],
+      );
+      const phone = user.rows[0]?.telephone || telephone;
+      WhatsAppService.sendPaymentConfirmation(
+        phone,
+        reference,
+        montant,
+        "en_attente",
+      );
+
+      res.json({ success: true, reference, ...result });
+    } catch (err) {
+      console.error("Erreur Campay:", err);
+      res.status(400).json({ error: err.message || "Erreur Campay" });
+    }
+  },
+);
 
 router.post("/webhook", async (req, res) => {
   try {
-    const raw = JSON.stringify(req.body);
-    const receivedKey = req.headers["x-campay-key"] || req.query.key;
     const expected = process.env.CAMPAY_WEBHOOK_KEY;
-    if (expected && receivedKey !== expected) {
+    if (!expected) {
+      // Sécurité : si la clé n'est pas configurée, on refuse TOUT webhook
+      // plutôt que de faire confiance à n'importe quel appelant (fail closed).
+      console.error(
+        "CAMPAY_WEBHOOK_KEY non configurée : webhook Campay refusé",
+      );
+      return res.status(503).json({ error: "Webhook non configuré" });
+    }
+    const receivedKey = req.headers["x-campay-key"] || req.query.key;
+    if (receivedKey !== expected) {
       return res.status(401).json({ error: "Invalid webhook key" });
     }
 
-    const reference = req.body?.reference || req.body?.external_reference || req.query.reference;
+    const reference =
+      req.body?.reference ||
+      req.body?.external_reference ||
+      req.query.reference;
     const status = req.body?.status || req.query.status;
     const transactionId = req.body?.transaction || req.body?.id;
-    const metadata = req.body?.metadata || {};
 
     if (!reference) return res.status(400).json({ error: "Missing reference" });
 
-    const statutMap = { success: "reussi", failed: "echoue", pending: "en_attente" };
+    const statutMap = {
+      success: "reussi",
+      failed: "echoue",
+      pending: "en_attente",
+    };
     const newStatus = statutMap[status] || status || "en_attente";
 
-    await pool.query(`UPDATE paiements SET statut = $1, transaction_id = $2, updated_at = NOW() WHERE reference = $3`, [newStatus, transactionId, reference]);
+    const paiementRow = await pool.query(
+      `UPDATE paiements SET statut = $1, transaction_id = $2, updated_at = NOW() WHERE reference = $3 RETURNING devis_id, montant, utilisateur_id`,
+      [newStatus, transactionId, reference],
+    );
+    if (!paiementRow.rows.length) {
+      console.error(
+        "Webhook Campay: paiement introuvable pour la reference",
+        reference,
+      );
+      return res.status(404).json({ error: "Paiement introuvable" });
+    }
+    const devisId = paiementRow.rows[0].devis_id;
 
-    if (newStatus === "reussi" && metadata?.devis_id) {
-      await pool.query(`UPDATE devis SET statut = 'paye' WHERE id = $1`, [metadata.devis_id]);
-      const devis = await pool.query("SELECT utilisateur_id FROM devis WHERE id=$1", [metadata.devis_id]);
+    if (newStatus === "reussi" && devisId) {
+      await pool.query(`UPDATE devis SET statut = 'paye' WHERE id = $1`, [
+        devisId,
+      ]);
+      const devis = await pool.query(
+        "SELECT utilisateur_id FROM devis WHERE id=$1",
+        [devisId],
+      );
       if (devis.rows.length) {
-        const client = await pool.query("SELECT telephone FROM utilisateurs WHERE id=$1", [devis.rows[0].utilisateur_id]);
+        const client = await pool.query(
+          "SELECT telephone FROM utilisateurs WHERE id=$1",
+          [devis.rows[0].utilisateur_id],
+        );
         const phone = client.rows[0]?.telephone;
-        const p = await pool.query("SELECT montant FROM paiements WHERE reference=$1", [reference]);
-        if (phone) WhatsAppService.sendPaymentConfirmation(phone, reference, p.rows[0]?.montant, "reussi");
+        const p = await pool.query(
+          "SELECT montant FROM paiements WHERE reference=$1",
+          [reference],
+        );
+        if (phone)
+          WhatsAppService.sendPaymentConfirmation(
+            phone,
+            reference,
+            p.rows[0]?.montant,
+            "reussi",
+          );
       }
     }
 
@@ -81,31 +185,43 @@ router.post("/webhook", async (req, res) => {
 router.get("/verifier/:reference", verifyToken, async (req, res) => {
   try {
     const { reference } = req.params;
-    const payment = await pool.query("SELECT * FROM paiements WHERE reference = $1", [reference]);
-    if (!payment.rows.length) return res.status(404).json({ error: "Paiement non trouve" });
-    if (payment.rows[0].utilisateur_id !== req.user.id && req.user.role !== "admin") {
+    const payment = await pool.query(
+      "SELECT * FROM paiements WHERE reference = $1",
+      [reference],
+    );
+    if (!payment.rows.length)
+      return res.status(404).json({ error: "Paiement non trouve" });
+    if (
+      payment.rows[0].utilisateur_id !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
       return res.status(403).json({ error: "Acces refuse" });
     }
     const result = await campay.verifyPayment(reference);
     res.json(result);
   } catch (err) {
     console.error("Erreur verification Campay:", err);
-    res.status(400).json({ error: err.message || "Erreur lors de la verification" });
+    res
+      .status(400)
+      .json({ error: err.message || "Erreur lors de la verification" });
   }
 });
 
 router.get("/historique", verifyToken, async (req, res) => {
-  const result = await pool.query(`SELECT * FROM paiements WHERE utilisateur_id = $1 ORDER BY created_at DESC`, [req.user.id]);
+  const result = await pool.query(
+    `SELECT * FROM paiements WHERE utilisateur_id = $1 ORDER BY created_at DESC`,
+    [req.user.id],
+  );
   res.json(result.rows);
 });
 
 router.get("/admin/tous", verifyToken, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin requis" });
+  if (req.user.role !== "admin")
+    return res.status(403).json({ error: "Admin requis" });
   const result = await pool.query(
-    `SELECT p.*, u.nom as utilisateur_nom FROM paiements p JOIN utilisateurs u ON p.utilisateur_id = u.id ORDER BY p.created_at DESC`
+    `SELECT p.*, u.nom as utilisateur_nom FROM paiements p JOIN utilisateurs u ON p.utilisateur_id = u.id ORDER BY p.created_at DESC`,
   );
   res.json(result.rows);
 });
 
 export default router;
-

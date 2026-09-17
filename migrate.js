@@ -4,26 +4,32 @@
  *
  * Chaque migration est un tableau de requêtes DDL "IF NOT EXISTS" / idempotentes.
  */
-import pool from './db.js';
+import pool from "./db.js";
 
 const MIGRATIONS = [
   {
-    name: '2026-08-26_utilisateurs_telephone_verified',
+    name: "2026-08-26_utilisateurs_telephone_verified",
     queries: [
       `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS telephone_verified BOOLEAN DEFAULT false`,
     ],
   },
   {
-    name: '2026-08-26_paiements_payment_data',
+    name: "2026-08-26_paiements_payment_data",
     queries: [
       `ALTER TABLE paiements ADD COLUMN IF NOT EXISTS payment_data JSONB`,
       `ALTER TABLE paiements ADD COLUMN IF NOT EXISTS transaction_id VARCHAR(100)`,
     ],
   },
   {
-    name: '2026-08-26_notifications_index',
+    name: "2026-08-26_notifications_index",
     queries: [
       `CREATE INDEX IF NOT EXISTS idx_notifications_utilisateur ON notifications(utilisateur_id)`,
+    ],
+  },
+  {
+    name: "2026-09-17_devis_produit_id",
+    queries: [
+      `ALTER TABLE devis ADD COLUMN IF NOT EXISTS produit_id INTEGER REFERENCES produits(id)`,
     ],
   },
 ];
@@ -37,23 +43,28 @@ async function main() {
     )`);
 
     for (const migration of MIGRATIONS) {
-      const done = await client.query('SELECT 1 FROM _migrations WHERE name = $1', [migration.name]);
+      const done = await client.query(
+        "SELECT 1 FROM _migrations WHERE name = $1",
+        [migration.name],
+      );
       if (done.rows.length) {
         console.log(`↩️  ${migration.name} : déjà appliquée`);
         continue;
       }
-      await client.query('BEGIN');
+      await client.query("BEGIN");
       for (const q of migration.queries) {
         await client.query(q);
       }
-      await client.query('INSERT INTO _migrations (name) VALUES ($1)', [migration.name]);
-      await client.query('COMMIT');
+      await client.query("INSERT INTO _migrations (name) VALUES ($1)", [
+        migration.name,
+      ]);
+      await client.query("COMMIT");
       console.log(`✅ ${migration.name} : appliquée`);
     }
-    console.log('\n🎉 Migrations à jour.');
+    console.log("\n🎉 Migrations à jour.");
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('❌ Erreur migration :', err.message);
+    await client.query("ROLLBACK");
+    console.error("❌ Erreur migration :", err.message);
     process.exitCode = 1;
   } finally {
     client.release();

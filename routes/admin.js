@@ -44,26 +44,42 @@ router.delete('/utilisateurs/:id', verifyToken, isAdmin, async (req, res) => {
   res.json({ message: 'Utilisateur supprimé' });
 });
 
-// --- Devis ---
-router.get('/devis/:id', verifyToken, isAdmin, async (req, res) => {
-  const result = await pool.query('SELECT * FROM devis WHERE id = $1', [req.params.id]);
-  res.json(result.rows[0]);
-});
-
+// --- Devis : chiffrage admin (SEULE source de prix — le client ne chiffre jamais) ---
 router.put('/devis/:id', verifyToken, isAdmin, async (req, res) => {
   const { id } = req.params;
-  const { remise_pourcentage, frais_transport, frais_divers } = req.body;
-  const devis = await pool.query('SELECT cout_estime_brut FROM devis WHERE id = $1', [id]);
+  const { nb_panneaux, prix_unitaire, cout_estime_brut, remise_pourcentage, frais_transport, frais_divers } = req.body;
+  const devis = await pool.query('SELECT * FROM devis WHERE id = $1', [id]);
   if (!devis.rows.length) return res.status(404).json({ error: 'Devis non trouvé' });
-  const brut = parseFloat(devis.rows[0].cout_estime_brut);
-  const remise = parseFloat(remise_pourcentage) || 0;
-  const transport = parseFloat(frais_transport) || 0;
-  const divers = parseFloat(frais_divers) || 0;
-  const total_final = brut * (1 - remise / 100) + transport + divers;
+  const current = devis.rows[0];
+  // Base chiffrable par l'admin (si non fournie, on garde l'existante)
+  const nbP = nb_panneaux !== undefined ? parseInt(nb_panneaux, 10) : current.nb_panneaux;
+  const pu = prix_unitaire !== undefined ? parseFloat(prix_unitaire) : current.prix_unitaire;
+  let brut = cout_estime_brut !== undefined ? parseFloat(cout_estime_brut) : current.cout_estime_brut;
+  // Si aucun brut existant/fourni mais nb+pu connus -> calcul serveur
+  if ((brut === null || brut === undefined || isNaN(brut)) && nbP && pu) {
+    brut = Number(nbP) * Number(pu);
+  }
+  if (brut === null || brut === undefined || isNaN(Number(brut))) {
+    return res.status(400).json({ error: 'Base de chiffrage manquante : fournissez nb_panneaux + prix_unitaire ou cout_estime_brut' });
+  }
+  brut = Number(brut);
+  const remise = parseFloat(remise_pourcentage ?? current.remise_pourcentage) || 0;
+  const transport = parseFloat(frais_transport ?? current.frais_transport) || 0;
+  const divers = parseFloat(frais_divers ?? current.frais_divers) || 0;
+  if (remise < 0 || remise > 100) return res.status(400).json({ error: 'Remise invalide (0-100)' });
+  if (transport < 0 || divers < 0) return res.status(400).json({ error: 'Frais invalides' });
+  const total_final = Math.round(brut * (1 - remise / 100) + transport + divers);
   await pool.query(
-    `UPDATE devis SET remise_pourcentage=$1, frais_transport=$2, frais_divers=$3, total_final=$4 WHERE id=$5`,
-    [remise, transport, divers, total_final, id]
+    `UPDATE devis SET nb_panneaux=$1, prix_unitaire=$2, cout_estime_brut=$3, remise_pourcentage=$4, frais_transport=$5, frais_divers=$6, total_final=$7 WHERE id=$8`,
+    [nbP || null, pu || null, brut, remise, transport, divers, total_final, id]
   );
+  // Notification client (table notifications -> lue par le mobile)
+  try {
+    await pool.query(
+      `INSERT INTO notifications (utilisateur_id, titre, corps, type) VALUES ($1,$2,$3,$4)`,
+      [current.utilisateur_id, 'Devis chiffré #' + id, 'Votre devis a été chiffré : ' + total_final.toLocaleString('fr-FR') + ' FCFA. Validez-le dans l\u2019app.', 'devis']
+    );
+  } catch (e) { console.error('notif devis chiffre KO:', e.message); }
   res.json({ message: 'Devis mis à jour', total_final });
 });
 

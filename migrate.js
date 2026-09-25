@@ -1,12 +1,20 @@
+import pool from "./db.js";
+
 /**
  * migrate.js — Applique les migrations idempotentes à la base BTT-LUX.
  * Utilisation :  node migrate.js
  *
  * Chaque migration est un tableau de requêtes DDL "IF NOT EXISTS" / idempotentes.
  */
-import pool from "./db.js";
-
 const MIGRATIONS = [
+  {
+    name: "2026-09-25_auth_security",
+    queries: [
+      `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT`,
+      `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ`,
+    ],
+  },
   {
     name: "2026-09-17_chantiers_photos",
     queries: [
@@ -38,6 +46,26 @@ const MIGRATIONS = [
     name: "2026-09-17_devis_produit_id",
     queries: [
       `ALTER TABLE devis ADD COLUMN IF NOT EXISTS produit_id INTEGER REFERENCES produits(id)`,
+    ],
+  },
+  {
+    name: "2026-09-25_utilisateurs_email_verified",
+    queries: [
+      `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false`,
+    ],
+  },
+  {
+    // Stockage OTP email : HMAC-SHA-256 avec une clé serveur, jamais en clair.
+    name: "2026-09-25_email_otp_codes",
+    queries: [
+      `CREATE TABLE IF NOT EXISTS email_otp_codes (
+        email VARCHAR(255) PRIMARY KEY,
+        code_hash TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_email_otp_codes_expires ON email_otp_codes(expires_at)`,
     ],
   },
 ];

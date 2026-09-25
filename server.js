@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 
 // Import des routes
 import authRoutes from './routes/auth.js';
+import authEmailRoutes from './routes/auth-email.js';
 import adminRoutes from './routes/admin.js';
 import productsRoutes from './routes/products.js';
 import calculatorRoutes from './routes/calculator.js';
@@ -24,8 +25,13 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import pool from './db.js';
 import { verifyToken } from './middleware/auth.js';
 import logger from './services/logger.js';
+import { getJwtSecret } from './config/auth.js';
 
 dotenv.config();
+
+// Fail-fast : sans JWT_SECRET fort, tous les tokens (dont email_verification)
+// seraient falsifiables. Lève en production si absent ou < 32 caractères.
+getJwtSecret();
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,9 +47,11 @@ app.use(helmet({
 }));
 
 // --- Rate Limiting ---
+const isTestEnv = process.env.NODE_ENV === 'test';
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: isTestEnv ? 10000 : 100,
   message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -53,7 +61,7 @@ app.use('/api/', limiter);
 // Rate limiting plus strict pour l'authentification
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: isTestEnv ? 1000 : 5,
   skipSuccessfulRequests: true,
   message: { error: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.' }
 });
@@ -95,7 +103,23 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Limiteur dédié contre l'épuisement du quota email.
+// La clé par défaut d'express-rate-limit est l'IP req.ip (gestion IPv6
+// correcte). 3 demandes / 15 min, y compris les demandes qui échouent.
+const otpEmailRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: 'Trop de codes demandés, réessayez dans 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // --- Routes d'authentification (avec rate limiting strict) ---
+// La route email est placée avant authRoutes afin que la demande d'OTP ne
+// traverse pas deux fois authLimiter. Le endpoint de vérification protège
+// déjà chaque code par MAX_ATTEMPTS dans le stockage OTP.
+app.post('/api/auth/request-otp-email', otpEmailRequestLimiter);
+app.use('/api', authEmailRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 
 // --- Routes Admin (gestion des devis, missions, etc.) ---

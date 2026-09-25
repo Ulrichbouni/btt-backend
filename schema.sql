@@ -1,8 +1,8 @@
 -- Schema BTT-LUX
--- ALIGNE SUR LA BASE DE PRODUCTION REELLE (genere via scripts/dumpRealSchema.js)
+-- ALIGNE SUR LA BASE DE PRODUCTION REELLE (alignement initial realise en 2026
+-- avec un script de dump one-shot, retire depuis — voir l'historique git).
 -- + tables paiements / professionnels / notifications ajoutees en 2026.
 -- Idempotent : CREATE TABLE IF NOT EXISTS.
--- Genere depuis la base REELLE (node scripts/dumpRealSchema.js)
 -- Source de verite : structure de production.
 
 CREATE TABLE IF NOT EXISTS accessoires (
@@ -123,12 +123,27 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
     role VARCHAR(20) DEFAULT 'client'::character varying,
     ville VARCHAR(100),
     mot_de_passe_hash TEXT NOT NULL,
+    auth_version INTEGER NOT NULL DEFAULT 0,
+    password_reset_token_hash TEXT,
+    password_reset_expires_at TIMESTAMPTZ,
     telephone_verified BOOLEAN DEFAULT false,
+    email_verified BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT now(),
     CONSTRAINT utilisateurs_email_key UNIQUE (email),
     CONSTRAINT utilisateurs_pkey PRIMARY KEY (id),
     CONSTRAINT utilisateurs_telephone_key UNIQUE (telephone)
 );
+
+-- Codes OTP email (remplace le Map en mémoire : survit au redémarrage,
+-- partagé entre instances ; empreintes HMAC-SHA-256, jamais le code en clair).
+CREATE TABLE IF NOT EXISTS email_otp_codes (
+    email VARCHAR(255) PRIMARY KEY,
+    code_hash TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_email_otp_codes_expires ON email_otp_codes(expires_at);
 
 -- Index
 

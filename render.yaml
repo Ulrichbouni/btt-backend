@@ -31,10 +31,31 @@ services:
         sync: false
       - key: TWILIO_VERIFY_SERVICE_SID
         sync: false
-      - key: SENDGRID_API_KEY
+      - key: EMAIL_PROVIDER
+        value: gmail
+      # SMTP Gmail : REQUIS pour l'inscription par email (OTP).
+      # À saisir dans le dashboard Render (jamais dans ce fichier).
+      - key: MAIL_USER
+        sync: false
+      - key: MAIL_APP_PASS
+        sync: false
+      - key: MAIL_FROM_NAME
+        sync: false
+      # Relais alternatifs (EMAIL_PROVIDER=brevo | resend)
+      - key: BREVO_SMTP_USER
+        sync: false
+      - key: BREVO_SMTP_KEY
+        sync: false
+      - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # Garde-fou quota emails (defaut 450 < 500/jour Gmail)
+      - key: EMAIL_DAILY_MAX
+        value: "450"
+      # Codes OTP persistants (obligatoire : plusieurs instances / redemarrages)
+      - key: OTP_STORE
+        value: sql
 
   - type: pserv
     name: btt-db

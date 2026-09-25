@@ -76,6 +76,9 @@ Les **tests d'intégration** (DB réelle) sont volontairement exclus de la CI : 
 - Requêtes SQL paramétrées (pg) — protection injection.
 - Validation des entrées `zod` (corps + paramètres d'URL).
 - `helmet`, CORS restreint à `FRONTEND_URL`, rate limiting global + strict sur `/api/auth`.
+- OTP email : 3 demandes / 15 min / IP, stockage SQL en production, empreintes HMAC-SHA-256 et 5 essais maximum par code.
+- Quotas fournisseurs : Gmail ~500/jour, Brevo ~300/jour, Resend ~3000/mois. `EMAIL_DAILY_MAX=450` protège Gmail par défaut ; au-delà, basculer `EMAIL_PROVIDER=resend` ou `brevo`.
+- Purge OTP autonome : `npm run db:purge-otp` (à planifier toutes les 5 à 15 minutes) ; le serveur purge aussi toutes les 5 minutes.
 - bcrypt (coût 10) + 2FA optionnel (TOTP).
 - Aucun admin créé par le schéma (obligatoire via `npm run db:seed` + `ADMIN_PASSWORD`).
 

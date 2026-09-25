@@ -16,6 +16,44 @@ router.get("/mes-chantiers", verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
+// Mes chantiers (technicien) : chantiers liés aux missions qui lui sont assignées
+router.get("/technicien/mes-chantiers", verifyToken, async (req, res) => {
+  if (req.user.role !== "technicien" && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Rôle technicien requis" });
+  }
+  const id = req.user.role === "admin" ? req.query.technicien_id : req.user.id;
+  if (!id) return res.status(400).json({ error: "ID technicien manquant" });
+
+  const result = await pool.query(
+    `SELECT c.*, d.ville, d.adresse, d.surface, u.nom AS client_nom
+     FROM chantiers c
+     JOIN devis d ON c.devis_id = d.id
+     JOIN utilisateurs u ON u.id = d.utilisateur_id
+     WHERE c.mission_id IN (SELECT id FROM missions_technicien WHERE technicien_id = $1)
+        OR c.devis_id IN (SELECT devis_id FROM missions_technicien WHERE technicien_id = $1)
+     ORDER BY c.created_at DESC`,
+    [id],
+  );
+  res.json(result.rows);
+});
+
+// Admin : lister tous les chantiers
+// Declare AVANT /:id (route mono-segment) pour eviter toute absorption future.
+router.get("/admin/tous", verifyToken, isAdmin, async (req, res) => {
+  const result = await pool.query(
+    `SELECT c.*, d.ville, d.adresse, d.surface,
+            u.nom AS client_nom, u.email AS client_email,
+            tech.nom AS technicien_nom
+     FROM chantiers c
+     JOIN devis d ON c.devis_id = d.id
+     JOIN utilisateurs u ON u.id = d.utilisateur_id
+     LEFT JOIN missions_technicien m ON m.devis_id = d.id
+     LEFT JOIN utilisateurs tech ON tech.id = m.technicien_id
+     ORDER BY c.created_at DESC`,
+  );
+  res.json(result.rows);
+});
+
 // Détail d'un chantier
 router.get("/:id", verifyToken, async (req, res) => {
   const result = await pool.query(
@@ -88,22 +126,6 @@ router.put("/:id/avancer", verifyToken, async (req, res) => {
   );
   res.json({ message: `Passage à l'étape "${nextEtape}" effectué` });
 });
-// Admin : lister tous les chantiers
-router.get("/admin/tous", verifyToken, isAdmin, async (req, res) => {
-  const result = await pool.query(
-    `SELECT c.*, d.ville, d.adresse, d.surface,
-            u.nom AS client_nom, u.email AS client_email,
-            tech.nom AS technicien_nom
-     FROM chantiers c
-     JOIN devis d ON c.devis_id = d.id
-     JOIN utilisateurs u ON u.id = d.utilisateur_id
-     LEFT JOIN missions_technicien m ON m.devis_id = d.id
-     LEFT JOIN utilisateurs tech ON tech.id = m.technicien_id
-     ORDER BY c.created_at DESC`,
-  );
-  res.json(result.rows);
-});
-
 // Admin ou technicien assigné : ajouter des photos avant/après
 router.post("/:id/photos", verifyToken, async (req, res) => {
   const { type, urls } = req.body;

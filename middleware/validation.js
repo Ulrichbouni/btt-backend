@@ -2,32 +2,42 @@ import { z } from "zod";
 
 // Schemas de validation reutilisables
 
+const telephoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9]{8,15}$/, "Numero de telephone invalide");
+
+// Politique appliquee uniquement aux nouveaux mots de passe. Les comptes
+// existants restent utilisables a la connexion jusqu'au prochain changement.
+export const newPasswordSchema = z
+  .string()
+  .min(8, "Le mot de passe doit contenir au moins 8 caracteres")
+  .max(128, "Le mot de passe est trop long")
+  .regex(/[A-Za-z]/, "Le mot de passe doit contenir une lettre")
+  .regex(/[0-9]/, "Le mot de passe doit contenir un chiffre");
+
 export const registerSchema = z.object({
-  nom: z.string().min(2, "Le nom doit contenir au moins 2 caracteres").max(100),
-  email: z.string().email("Email invalide"),
-  telephone: z
-    .string()
-    .regex(/^\+?[0-9]{8,15}$/, "Numero de telephone invalide")
-    .optional(),
-  mot_de_passe: z
-    .string()
-    .min(6, "Le mot de passe doit contenir au moins 6 caracteres"),
+  nom: z.string().trim().min(2, "Le nom doit contenir au moins 2 caracteres").max(100),
+  email: z.string().trim().email("Email invalide"),
+  telephone: telephoneSchema.optional(),
+  mot_de_passe: newPasswordSchema,
   phone_verification_token: z.string().optional(),
+  email_verification_token: z.string().optional(),
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("Email invalide"),
+  email: z.string().trim().email("Email invalide"),
   mot_de_passe: z.string().min(1, "Mot de passe requis"),
   otp_token: z
     .string()
-    .length(6, "Code OTP doit contenir 6 chiffres")
+    .regex(/^[0-9]{6}$/, "Code OTP doit contenir 6 chiffres")
     .optional(),
 });
 
 export const devisSchema = z.object({
   surface: z.number().positive("Surface doit etre positive"),
-  ville: z.string().min(2, "Ville requise"),
-  adresse: z.string().min(5, "Adresse requise"),
+  ville: z.string().trim().min(2, "Ville requise"),
+  adresse: z.string().trim().min(5, "Adresse requise"),
   date_souhaitee: z.string().datetime().optional(),
   photos: z.array(z.string().url()).optional(),
   plans: z.array(z.string().url()).optional(),
@@ -92,7 +102,7 @@ export const professionnelSchema = z.object({
   nom: z.string().min(2).max(100),
   role: z.string(),
   ville: z.string().min(2),
-  telephone: z.string().regex(/^\+?[0-9]{8,15}$/),
+  telephone: telephoneSchema,
   niveau_certification: z.string().optional(),
   note: z.number().min(0).max(5).optional(),
   nb_chantiers: z.number().int().nonnegative().optional(),
@@ -102,7 +112,7 @@ export const professionnelSchema = z.object({
 export const validate = (schema) => {
   return (req, res, next) => {
     try {
-      schema.parse(req.body);
+      req.body = schema.parse(req.body);
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -114,16 +124,16 @@ export const validate = (schema) => {
           })),
         });
       }
-      next();
+      next(error);
     }
   };
 };
 
-// Validation des parametres d URL
+// Validation des parametres d'URL
 export const validateParams = (schema) => {
   return (req, res, next) => {
     try {
-      schema.parse(req.params);
+      req.params = schema.parse(req.params);
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -135,7 +145,7 @@ export const validateParams = (schema) => {
           })),
         });
       }
-      next();
+      next(error);
     }
   };
 };

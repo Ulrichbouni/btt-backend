@@ -22,7 +22,9 @@ Nous accuserons réception sous 72 h et répondrons avec un plan de correction.
 - Base de données : requêtes paramétrées (pg) → protection injection SQL.
 - Validation des entrées : `zod` (register/login).
 - Headers : `helmet`, CORS restreint à `FRONTEND_URL`.
-- Rate limiting : global + strict sur les routes d'authentification.
+- Rate limiting : global + strict sur les routes d'authentification ; la demande d'OTP email est limitée à 3 / 15 min / IP.
+- OTP email : stockage SQL partagé entre instances en production, HMAC-SHA-256 avec `JWT_SECRET`, expiration de 10 min et 5 essais maximum.
+- Quota email : plafond global configurable (`EMAIL_DAILY_MAX`) et limitation dédiée anti-épuisement Gmail.
 - Mots de passe : `bcrypt` (coût 10), 2FA TOTP (speakeasy) optionnel.
 - Secrets : jamais commités (`.env` ignoré), scan automatique en CI (Gitleaks).
 - Password par défaut : aucun admin n'est créé par le schéma (`npm run db:seed` l'exige).

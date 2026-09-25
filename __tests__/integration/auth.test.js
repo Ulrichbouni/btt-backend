@@ -1,5 +1,18 @@
 ﻿import request from 'supertest';
 import { app } from '../helpers/test-app.js';
+import pool from '../../db.js';
+
+// Ces tests écrivent réellement en base (base de développement partagée).
+// On génère donc un email unique par exécution et on nettoie les lignes
+// créées : le suite reste rejouable et ne pollue pas la base.
+const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const EMAIL = `register_ok_${stamp}@example.com`;
+const DUP_EMAIL = `duplicate_${stamp}@example.com`;
+
+afterAll(async () => {
+  await pool.query('DELETE FROM utilisateurs WHERE email LIKE $1', [`%_${stamp}@example.com`]);
+  await pool.end();
+});
 
 describe('Auth API Integration', () => {
   
@@ -9,7 +22,7 @@ describe('Auth API Integration', () => {
         .post('/api/auth/register')
         .send({
           nom: 'Test User',
-          email: 'test@example.com',
+          email: EMAIL,
           mot_de_passe: 'password123',
           role: 'client'
         });
@@ -17,7 +30,7 @@ describe('Auth API Integration', () => {
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
       expect(response.body).toHaveProperty('message');
-      expect(response.body.email).toBe('test@example.com');
+      expect(response.body.email).toBe(EMAIL);
     });
 
     it('should reject duplicate email', async () => {
@@ -25,7 +38,7 @@ describe('Auth API Integration', () => {
         .post('/api/auth/register')
         .send({
           nom: 'Test User',
-          email: 'duplicate@example.com',
+          email: DUP_EMAIL,
           mot_de_passe: 'password123'
         });
 
@@ -33,7 +46,7 @@ describe('Auth API Integration', () => {
         .post('/api/auth/register')
         .send({
           nom: 'Another User',
-          email: 'duplicate@example.com',
+          email: DUP_EMAIL,
           mot_de_passe: 'password123'
         });
       
@@ -57,7 +70,7 @@ describe('Auth API Integration', () => {
         .post('/api/auth/register')
         .send({
           nom: 'Test User',
-          email: 'test@example.com',
+          email: EMAIL,
           mot_de_passe: '12345'
         });
       
@@ -70,7 +83,7 @@ describe('Auth API Integration', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'test@example.com',
+          email: EMAIL,
           mot_de_passe: 'wrongpassword'
         });
       
@@ -94,7 +107,7 @@ describe('Auth API Integration', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'test@example.com',
+          email: EMAIL,
           mot_de_passe: 'password'
         });
       

@@ -37,8 +37,8 @@ jobs:
       - name: Vérif syntaxe serveur & scripts
         run: |
           node --check server.js
-          node --check scripts/initDb.js
-          node --check scripts/seed.js
+          node --check initDb.js
+          node --check seed.js
 
       # Tests d'intégration : nécessitent une vraie PostgreSQL.
       # Exécutés manuellement ou en local via :

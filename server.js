@@ -26,15 +26,20 @@ import pool from './db.js';
 import { verifyToken } from './middleware/auth.js';
 import logger from './services/logger.js';
 import { getJwtSecret } from './config/auth.js';
+import { securityHeaders, requestTimeout, sanitizeInput } from './middleware/security.js';
+import { validateSecurityConfig } from './config/security.js';
 
 dotenv.config();
 
 // Fail-fast : sans JWT_SECRET fort, tous les tokens (dont email_verification)
 // seraient falsifiables. Lève en production si absent ou < 32 caractères.
 getJwtSecret();
+validateSecurityConfig();
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+app.disable('x-powered-by');
 
 // Derrière Render/Vercel/reverse-proxy : faire confiance au 1er proxy
 // pour que req.ip, les rate-limiters et les cookies Secure soient exacts.
@@ -45,6 +50,8 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
+app.use(securityHeaders);
+app.use(requestTimeout(30000));
 
 // --- Rate Limiting ---
 const isTestEnv = process.env.NODE_ENV === 'test';
@@ -85,7 +92,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // --- Middleware pour parser le JSON ---
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(sanitizeInput);
 
 // --- Routes publiques ---
 app.get('/', (req, res) => {
@@ -104,8 +112,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Limiteur dédié contre l'épuisement du quota email.
-// La clé par défaut d'express-rate-limit est l'IP req.ip (gestion IPv6
-// correcte). 3 demandes / 15 min, y compris les demandes qui échouent.
 const otpEmailRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -115,9 +121,6 @@ const otpEmailRequestLimiter = rateLimit({
 });
 
 // --- Routes d'authentification (avec rate limiting strict) ---
-// La route email est placée avant authRoutes afin que la demande d'OTP ne
-// traverse pas deux fois authLimiter. Le endpoint de vérification protège
-// déjà chaque code par MAX_ATTEMPTS dans le stockage OTP.
 app.post('/api/auth/request-otp-email', otpEmailRequestLimiter);
 app.use('/api', authEmailRoutes);
 app.use('/api/auth', authLimiter, authRoutes);

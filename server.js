@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
-// Import des routes
 import authRoutes from './routes/auth.js';
 import authEmailRoutes from './routes/auth-email.js';
 import adminRoutes from './routes/admin.js';
@@ -31,8 +30,6 @@ import { validateSecurityConfig } from './config/security.js';
 
 dotenv.config();
 
-// Fail-fast : sans JWT_SECRET fort, tous les tokens (dont email_verification)
-// seraient falsifiables. Lève en production si absent ou < 32 caractères.
 getJwtSecret();
 validateSecurityConfig();
 
@@ -40,20 +37,15 @@ const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.disable('x-powered-by');
-
-// Derrière Render/Vercel/reverse-proxy : faire confiance au 1er proxy
-// pour que req.ip, les rate-limiters et les cookies Secure soient exacts.
 app.set('trust proxy', 1);
 
-// --- Security Headers ---
 app.use(helmet({
   contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
 }));
 app.use(securityHeaders);
 app.use(requestTimeout(30000));
 
-// --- Rate Limiting ---
 const isTestEnv = process.env.NODE_ENV === 'test';
 
 const limiter = rateLimit({
@@ -61,24 +53,20 @@ const limiter = rateLimit({
   max: isTestEnv ? 10000 : 100,
   message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
-// Rate limiting plus strict pour l'authentification
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isTestEnv ? 1000 : 5,
   skipSuccessfulRequests: true,
-  message: { error: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.' }
+  message: { error: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.' },
 });
 
-// --- Middleware CORS sécurisé ---
-// Autorise l'origine configurée (FRONTEND_URL), toutes les sous-domaines *.vercel.app
-// (déploiements/dev previews) et les requêtes sans origine (mobile, curl).
 const corsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // requêtes sans Origin (curl, mobile natif)
+    if (!origin) return cb(null, true);
     if (process.env.NODE_ENV !== 'production') {
       return cb(null, ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'].includes(origin));
     }
@@ -87,20 +75,17 @@ const corsOptions = {
     cb(null, origin === allowed || isVercel);
   },
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
 
-// --- Middleware pour parser le JSON ---
 app.use(express.json({ limit: '1mb' }));
 app.use(sanitizeInput);
 
-// --- Routes publiques ---
 app.get('/', (req, res) => {
   res.send('🚀 BTT API fonctionne');
 });
 
-// --- Healthcheck (utilisé par Render, Docker et les uptime checks) ---
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -111,60 +96,33 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Limiteur dédié contre l'épuisement du quota email.
 const otpEmailRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
   message: { error: 'Trop de codes demandés, réessayez dans 15 minutes.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
 });
 
-// --- Routes d'authentification (avec rate limiting strict) ---
 app.post('/api/auth/request-otp-email', otpEmailRequestLimiter);
 app.use('/api', authEmailRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 
-// --- Routes Admin (gestion des devis, missions, etc.) ---
 app.use('/api/admin', adminRoutes);
-
-// --- Routes Produits (catalogue) ---
 app.use('/api/products', productsRoutes);
-
-// --- Routes Calculateur ---
 app.use('/api/calculator', calculatorRoutes);
-
-// --- Routes Missions technicien ---
 app.use('/api/missions', missionsRoutes);
-
-// --- Routes OTP (2FA) ---
 app.use('/api/otp', otpRoutes);
-
-// --- Routes Professionnels BTP ---
 app.use('/api/professionnels', professionnelsRoutes);
-
-// --- Routes Devis (demande et suivi) ---
 app.use('/api/devis', devisRoutes);
-
-// --- Routes Chantiers ---
 app.use('/api/chantiers', chantiersRoutes);
-
-// --- Routes Paiements ---
 app.use('/api/paiements', paiementsRoutes);
-
-// --- Routes Assistant IA (OpenRouter) ---
 app.use('/api/assistant', assistantRoutes);
-
-// --- Routes Notifications ---
 app.use('/api/notifications', notificationsRoutes);
-
-// --- Routes Upload ---
 app.use('/api/uploads', uploadsRoutes);
 
-// --- Fichiers statiques uploads ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- Export PDF d'un devis (client/admin) ---
 app.get('/api/devis/:id/pdf', verifyToken, async (req, res) => {
   const { id } = req.params;
   try {
@@ -183,7 +141,6 @@ app.get('/api/devis/:id/pdf', verifyToken, async (req, res) => {
   }
 });
 
-// --- Middleware de logs HTTP (requêtes) ---
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -192,18 +149,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Gestion des erreurs 404 ---
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
 });
 
-// --- Middleware global des erreurs ---
 app.use((err, req, res, next) => {
   logger.error('Erreur serveur', { message: err.message, stack: err.stack });
   res.status(500).json({ error: 'Erreur interne du serveur' });
 });
 
-// --- Démarrage du serveur (uniquement si lancé directement) ---
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const PORT = process.env.PORT || 5000;
